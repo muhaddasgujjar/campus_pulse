@@ -9,7 +9,7 @@ Other docs: `docs/PRD.md` (what), `docs/Architectural.md` (how), `docs/DESIGN.md
 
 | Command | What it does |
 |---|---|
-| `make install` | Install API (uv) and web (pnpm) dependencies |
+| `make install` | Install API (uv) and web (npm) dependencies |
 | `make api-dev` / `make web-dev` | Run the API on :8000 / the web app on :3000 |
 | `make up` / `make down` / `make logs` | Docker Compose (api, web, optional `PROFILES=local-redis`) |
 | `make lint` / `make fmt` / `make typecheck` | ruff + eslint / auto-fix / mypy + tsc |

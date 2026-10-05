@@ -41,11 +41,6 @@
       "Bash(pytest *)",
       "Bash(ruff *)",
       "Bash(mypy *)",
-      "Bash(pnpm run *)",
-      "Bash(pnpm lint *)",
-      "Bash(pnpm test *)",
-      "Bash(pnpm typecheck *)",
-      "Bash(pnpm build *)",
       "Bash(npm run *)"
     ]
   }

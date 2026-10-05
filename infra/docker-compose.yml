@@ -24,7 +24,7 @@ services:
   web:
     image: node:24-alpine
     working_dir: /app
-    command: ["sh", "-c", "npm install -g pnpm@11.20.0 && pnpm install --frozen-lockfile && pnpm dev --hostname 0.0.0.0"]
+    command: ["sh", "-c", "npm ci && npm run dev -- --hostname 0.0.0.0"]
     ports:
       - "3000:3000"
     env_file:

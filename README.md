@@ -37,7 +37,7 @@ docs/          PRD, architecture, design, memory, phases
 
 Prerequisites (all free):
 - **Python 3.11+** and **uv**: `pip install uv` or see https://docs.astral.sh/uv/
-- **Node.js 24 LTS** (20.9+ works) and **pnpm 11**: `npm install -g pnpm@11.20.0`
+- **Node.js 24 LTS** (npm is included). Node 22.22+ also works; avoid odd-numbered releases (25.x)
 - **GNU make**: on Windows run the commands from Git Bash and install make (for example `winget install ezwinports.make`), or run the commands inside each target by hand.
 - **Docker Desktop** (only for `make up` and image builds)
 - Optional: **pre-commit**: `uv tool install pre-commit && pre-commit install`
@@ -58,7 +58,7 @@ Tests need no cloud services. Database tests run only when `DATABASE_URL` is set
 | Target | Description |
 |---|---|
 | `make help` | List targets |
-| `make install` | `uv sync` (api) and `pnpm install` (web) |
+| `make install` | `uv sync` (api) and `npm ci` (web) |
 | `make up` / `down` / `logs` | Docker Compose: api, web, optional `redis` (profile `local-redis`) |
 | `make api-dev` / `web-dev` | Dev servers with reload |
 | `make lint` / `fmt` / `typecheck` | ruff + eslint / auto-fix / mypy + tsc |
