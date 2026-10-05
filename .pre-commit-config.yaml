@@ -1,0 +1,41 @@
+# Install once: `uv tool install pre-commit` (or `pip install pre-commit`), then `pre-commit install`.
+# Run on everything: `pre-commit run --all-files`.
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: check-yaml
+      - id: check-json
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=1024]
+      - id: detect-private-key
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.10
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+        files: ^apps/api/
+      - id: ruff-format
+        files: ^apps/api/
+
+  - repo: local
+    hooks:
+      - id: block-env-files
+        name: block real .env files (only .env.example may be committed)
+        language: fail
+        entry: "Real .env files must never be committed. Use .env.example."
+        files: (^|/)\.env(\..+)?$
+        exclude: (^|/)\.env\.example$
+
+      - id: block-obvious-secrets
+        name: block obvious secrets (API keys, JWTs, DB URLs with passwords)
+        language: pygrep
+        # Google API key | Supabase secret key | JWT | postgres URL with a password (not localhost)
+        entry: '(AIza[0-9A-Za-z_-]{35}|sb_secret_[0-9A-Za-z_-]{16,}|eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}|postgres(ql)?://[^:/\s]+:[^@\s]+@(?!localhost|127\.0\.0\.1|postgres:|redis:))'
+        exclude: (^|/)(package-lock\.json|uv\.lock)$

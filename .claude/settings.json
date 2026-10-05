@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "deny": [
+      "Read(.env*)",
+      "Read(!.env.example)",
+      "Read(*.pem)",
+      "Read(*.key)",
+      "Edit(.env*)",
+      "Edit(!.env.example)",
+      "Bash(rm -rf *)",
+      "Bash(rm -fr *)",
+      "Bash(git push --force *)",
+      "Bash(git push -f *)"
+    ],
+    "allow": [
+      "Bash(make help)",
+      "Bash(make install)",
+      "Bash(make up)",
+      "Bash(make down)",
+      "Bash(make logs)",
+      "Bash(make test)",
+      "Bash(make test-api)",
+      "Bash(make test-web)",
+      "Bash(make lint)",
+      "Bash(make lint-api)",
+      "Bash(make lint-web)",
+      "Bash(make fmt)",
+      "Bash(make typecheck)",
+      "Bash(make build-web)",
+      "Bash(make docker-api)",
+      "Bash(make eval)",
+      "Bash(make migrate)",
+      "Bash(make seed)",
+      "Bash(git status *)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(uv run pytest *)",
+      "Bash(uv run ruff *)",
+      "Bash(uv run mypy *)",
+      "Bash(pytest *)",
+      "Bash(ruff *)",
+      "Bash(mypy *)",
+      "Bash(npm run *)"
+    ]
+  }
+}

@@ -49,13 +49,13 @@ Review at the end of **W8** and **W11**. If behind, cut in this order:
 
 **Tasks**
 - [ ] Confirm PRD, Architectural, DESIGN, Phases with the supervisors. Get approval for the free-tier hosting instead of AWS and update the stack and architecture slides.
-- [ ] Create repo with the layout from `Architectural.md` Section 4, plus `CLAUDE.md` containing: "Read docs/Memory.md first."
+- [x] Create repo with the layout from `Architectural.md` Section 4, plus `CLAUDE.md` containing: "Read docs/Memory.md first." (2026-10-05)
 - [ ] **Free accounts (no card):** GitHub, Supabase (create `campus-pulse-dev` and `campus-pulse-prod`), Vercel, Render, Upstash, Google AI Studio, UptimeRobot, Sentry (optional). Confirm AI Studio works from Pakistan.
 - [ ] Record every service's free limits (from its dashboard) and the chosen Gemini model IDs in `Memory.md`.
 - [ ] `docker-compose.yml`: web, api, optional local redis, connected to the **dev** Supabase project. `make up`, `make down`, `make test`.
-- [ ] FastAPI skeleton with `/healthz`, `/readyz`, config loader, structured logging.
-- [ ] Next.js skeleton with `tokens.css` from `DESIGN.md`.
-- [ ] GitHub Actions: lint, type check, tests on pull requests.
+- [x] FastAPI skeleton with `/healthz`, `/readyz`, config loader, structured logging. (2026-10-05)
+- [x] Next.js skeleton with `tokens.css` from `DESIGN.md`. (2026-10-05)
+- [x] GitHub Actions: lint, type check, tests on pull requests. (2026-10-05, first run on GitHub pending)
 - [ ] Figma: tokens, components, mobile chat frames, admin frames (see `DESIGN.md` Section 12).
 - [ ] Data work: list of LGU documents to upload, 100 real student questions collected (form or WhatsApp), two staff contacts identified.
 

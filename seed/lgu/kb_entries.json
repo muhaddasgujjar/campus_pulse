@@ -1,0 +1,19 @@
+{
+  "_template": {
+    "description": "Knowledge base entries (table kb_entries, Architectural.md Section 5). Add one object per entry to `entries`. Only verified facts from an LGU office or an approved document.",
+    "fields": {
+      "title": "Short title, e.g. 'Entry test format'",
+      "question": "Optional student-style question this entry answers",
+      "answer": "The approved answer text",
+      "category": "admissions | fees | exams | scholarships | hostel | policies | contacts | other",
+      "department": "Owning office or department name (must match a department or office)",
+      "language": "en | ur | roman_ur",
+      "status": "draft | pending | approved | archived (seeds normally use approved)",
+      "last_verified": "YYYY-MM-DD, the real date the office confirmed it",
+      "expires_at": "YYYY-MM-DD or null",
+      "source_url": "Public page or document the fact comes from, or null",
+      "verified_by": "Name of the office that confirmed it"
+    }
+  },
+  "entries": []
+}

@@ -1,0 +1,53 @@
+@import "tailwindcss";
+@import "../styles/tokens.css";
+
+/*
+ * Map design tokens (styles/tokens.css) into Tailwind utilities.
+ * `--color-*: initial` removes Tailwind's default palette, so only token colors exist
+ * (bg-surface-1, text-muted, border-border-teal, ...). No hardcoded colors anywhere else.
+ * Radius and shadows use token variables directly: rounded-(--radius-md), shadow-(--glow-teal).
+ */
+@theme inline {
+  --color-*: initial;
+  --color-bg: var(--bg);
+  --color-surface-1: var(--surface-1);
+  --color-surface-2: var(--surface-2);
+  --color-surface-teal: var(--surface-teal);
+  --color-border: var(--border);
+  --color-border-teal: var(--border-teal);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-accent: var(--accent);
+  --color-user-bubble: var(--user-bubble);
+  --color-text: var(--text);
+  --color-muted: var(--text-muted);
+  --color-on-primary: var(--text-on-primary);
+  --color-on-user-bubble: var(--text-on-user-bubble);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-info: var(--info);
+  --color-mark-bg: var(--mark-bg);
+  --color-mark-fg: var(--mark-fg);
+
+  --font-sans: var(--font-body);
+}
+
+@layer base {
+  html,
+  body {
+    background-color: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+  }
+
+  body {
+    min-height: 100dvh;
+    font-size: 16px;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+}

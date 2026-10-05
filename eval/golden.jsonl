@@ -1,0 +1,1 @@
+{"id": "fake-001", "question": "What is the office number of Dr. Test Faculty at Example University?", "language": "en", "expected_facts": ["Room T-000"], "expected_tool": "find_faculty", "should_fallback": false, "category": "faculty", "notes": "FAKE example showing the format only. Delete when real items are added (PRD Section 10)."}

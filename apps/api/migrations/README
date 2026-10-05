@@ -1,0 +1,8 @@
+Alembic migrations (async). No migrations exist yet: the schema arrives in M2.
+
+Run from apps/api with DATABASE_URL_MIGRATIONS set to the Supabase *session pooler* URL:
+
+    uv run alembic upgrade head
+    uv run alembic revision --autogenerate -m "short description"
+
+In CI the manual workflow .github/workflows/migrate.yml runs `alembic upgrade head`.

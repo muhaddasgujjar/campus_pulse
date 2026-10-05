@@ -121,8 +121,32 @@ Milestones follow the proposal (M1 to M7). Tick items when done and add the date
 - [ ] **M7 Testing and Final Delivery** (W17)
 
 **Current milestone:** M1
-**Current focus:** (fill in)
-**Blocked on:** (fill in)
+**Current focus:** Repo scaffold done on branch `feat/M1-scaffold` (2026-10-05). Next: free accounts, free-limit recording, Gemini model IDs, Figma, 100 questions.
+**Blocked on:** Nothing technical. M1 exit needs the free accounts, the dev Supabase project and a first green CI run on GitHub.
+
+**M1 scaffold checklist** (see `Phases.md` M1 for the full task list)
+- [x] Repo layout per `Architectural.md` Section 4, `CLAUDE.md`, README, Makefile, pre-commit, `.claude/` commands (2026-10-05)
+- [x] FastAPI skeleton: `/healthz`, `/readyz`, `/metrics`, `/api/config`, env config, JSON logging, redaction with tests (2026-10-05)
+- [x] Next.js skeleton with `tokens.css`, placeholder `/`, `/chat`, `/admin`, wake ping, smoke test (2026-10-05)
+- [x] Dockerfile, docker-compose (api, web, optional redis), render.yaml (2026-10-05, image not built locally: Docker not installed)
+- [x] GitHub Actions: `ci.yml` (no secrets), manual `migrate.yml` and `jobs.yml` (2026-10-05, not yet run on GitHub)
+- [ ] Free accounts created and limits recorded below
+- [ ] App runs against the dev Supabase project (`/readyz` shows `database: ok`)
+
+**Free limits (record from each dashboard, with the date read)**
+| Service | Limit as shown in the dashboard | Date read |
+|---|---|---|
+| Supabase (dev, prod) | | |
+| Render | | |
+| Vercel | | |
+| Upstash Redis | | |
+| Gemini (per model: RPM, TPM, RPD) | | |
+| GitHub Actions | | |
+| UptimeRobot | | |
+
+**Gemini model IDs chosen:** fast = (fill in) · main = (fill in)
+
+**Pinned tool versions (2026-10-05, from PyPI and npm):** Python 3.12, uv 0.12.23, FastAPI 0.142.2, Pydantic 2.13.5, pydantic-settings 2.15.0, SQLAlchemy 2.1.3, Alembic 1.20.0, asyncpg 0.31.0, structlog 26.1.0, redis-py 8.1.0, pytest 9.1.1, ruff 0.16.10, mypy 2.4.0 · Node 24 LTS, npm (switched from pnpm 11: its downloads hung on this network), Next.js 16.3.8, React 19.2.8 (what create-next-app 16.3.8 selects), Tailwind 4.3.3, TypeScript 5.9.3, ESLint 9.39.5, Vitest 5.0.3, supabase-js 2.117.2. LangGraph, google-genai and supabase-py are added in M2/M5 when first used.
 **Golden set size:** 0 · **Latest eval score:** n/a
 
 ## 8. Decisions Pending *(update)*
@@ -134,6 +158,10 @@ Milestones follow the proposal (M1 to M7). Tick items when done and add the date
 | Does Google AI Studio work from the team's accounts in Pakistan? Which Gemini model IDs (fast and main)? Record the free limits shown in AI Studio | Team | W1 |
 | Supervisors accept "Docker, AWS-ready, hosted on free tiers" instead of AWS in the proposal? Update the stack and architecture slides | Team and supervisor | W2 |
 | Live mode on browser speech (default) or the Gemini Live API if quota allows? | Team | W9 |
+| Redaction of stored messages: apply to user text only? Phone redaction would also hide office numbers in bot answers | Team | W3 (M2) |
+| Light theme values: DESIGN.md gives 4 light colors; the rest in `tokens.css` are placeholders. Confirm in Figma | Team | W2 |
+| Install Docker Desktop and GNU make on dev machines (needed for `make up` and the image size check) | Team | W1 |
+| ESLint 9.39.5 is marked unsupported upstream, but eslint-plugin-react/import/jsx-a11y (used by eslint-config-next 16.3.8) only support ESLint up to 9. Upgrade to ESLint 10 when Next's config does | Team | Re-check each milestone |
 
 ## 9. Known Gotchas
 
@@ -171,3 +199,10 @@ Template:
 - Done: stack changed to Supabase plus free tiers (Vercel, Render, Upstash, Gemini free tier, browser speech). AWS removed. LLM budget, cold-start and quota handling added to the docs.
 - Decisions: D5 replaced, D14 to D18 added.
 - Next: verify free limits in week 1 and record them here. Ask supervisors to accept free hosting instead of AWS.
+
+### 2026-10-05 · M1 · Repo scaffold
+- Done: docs moved to `docs/`. Branch `feat/M1-scaffold`: CLAUDE.md, README, Makefile, pre-commit (ruff, env-file and secret blockers), `.claude/` settings and commands (/milestone, /status, /session-end, /eval). FastAPI skeleton (`/healthz`, `/readyz`, `/metrics`, `/api/config`, env settings, structlog JSON logs with request_id, redaction, pooler-safe async SQLAlchemy, Alembic on DATABASE_URL_MIGRATIONS, LLMProvider + FakeLLM, STT/TTS interfaces, auth stub). Next.js 16 skeleton (tokens.css, Montserrat, `/`, `/chat`, `/admin` placeholders, wake ping, Auth-only Supabase client, ESLint rule blocking hex colors). Dockerfile, compose, render.yaml. CI (no secrets), manual migrate and jobs workflows. Header-only seed templates, eval stub.
+- Decisions: uv for Python; npm for the web app (pnpm 11 installs hung repeatedly on this network, npm finished in 4 min); Vitest for the web smoke test; web versions follow create-next-app 16.3.8 (React 19.2, ESLint 9, TS 5.9) instead of the newest majors; LangGraph/google-genai/supabase-py added only when used (M2/M5); light theme `--text-on-primary` is dark (white on #0E8A95 fails AA); added optional `INSTITUTION_DISCLAIMER` env var (ADP-2).
+- Tests: API ruff, mypy (strict), pytest 42 passed / 3 skipped (DB tests need DATABASE_URL) (pass). Live API: /healthz 200, /readyz 200 not_configured. API RSS about 93 MB with prod deps only. Web: eslint, tsc, vitest 6 passed, next build (4 static routes) all pass; hex-color lint rule verified; built pages serve 200. Docker image not built locally (Docker not installed); CI builds and probes it.
+- Next: push the branch and open a PR to see CI green; create free accounts; record limits and Gemini model IDs here; fill `.env` files locally; check `/readyz` against dev Supabase.
+- Questions for the user: see Section 8 (redaction scope, light theme values, Docker and make install).

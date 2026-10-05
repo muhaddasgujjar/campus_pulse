@@ -1,0 +1,108 @@
+# CI (OPS-2): lint, type check, tests and builds on every pull request and push.
+# Needs NO secrets: the database is a throwaway pgvector container and the LLM is FakeLLM.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  api:
+    name: api (ruff, mypy, pytest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres  # throwaway CI container, not a secret
+          POSTGRES_DB: campus_pulse_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      APP_ENV: ci
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/campus_pulse_test
+      DATABASE_URL_MIGRATIONS: postgresql://postgres:postgres@localhost:5432/campus_pulse_test
+      LLM_PROVIDERS: fake
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          version: "0.12.23"
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: apps/api/uv.lock
+      - name: Install dependencies
+        run: uv sync --frozen
+      - name: Ruff lint
+        run: uv run ruff check .
+      - name: Ruff format check
+        run: uv run ruff format --check .
+      - name: Mypy
+        run: uv run mypy
+      - name: Alembic smoke (connects, no migrations yet)
+        run: uv run alembic upgrade head
+      - name: Pytest (unit, agent with FakeLLM, integration against pgvector)
+        run: uv run pytest -v
+
+  api-image:
+    name: api (docker build + /healthz)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build image
+        run: docker build -f infra/Dockerfile -t campus-pulse-api:ci apps/api
+      - name: Report image size
+        run: docker image ls campus-pulse-api:ci --format "Image size {{.Size}}" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Run container and probe health endpoints
+        run: |
+          docker run -d --name api -p 8000:8000 --memory=512m campus-pulse-api:ci
+          for i in $(seq 1 30); do curl -fsS http://localhost:8000/healthz && break; sleep 1; done
+          curl -fsS http://localhost:8000/readyz
+          docker stats --no-stream --format "Memory {{.MemUsage}}" api | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Container logs
+        if: always()
+        run: docker logs api || true
+
+  web:
+    name: web (lint, typecheck, test, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Smoke tests
+        run: npm test
+      - name: Build
+        run: npm run build

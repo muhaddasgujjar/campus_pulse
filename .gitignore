@@ -1,0 +1,44 @@
+# --- secrets: only .env.example files belong in git ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# --- python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# --- node / next ---
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+next-env.d.ts
+coverage/
+.vercel/
+.pnpm-store/
+npm-debug.log*
+pnpm-debug.log*
+
+# --- editors / os ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# --- claude code local overrides ---
+.claude/settings.local.json
+
+# --- eval output ---
+eval/results/
