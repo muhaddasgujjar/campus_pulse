@@ -1,0 +1,109 @@
+/*
+ * Campus Pulse AI design tokens (DESIGN.md Section 2).
+ * The ONLY place colors are defined. Components use these variables (directly or via the
+ * Tailwind theme mapping in app/globals.css). Names must match the Figma library.
+ * Values are approximate, from the proposal deck. Update once after sampling in Figma.
+ */
+
+/* ---- dark theme (default) ---- */
+:root {
+  color-scheme: dark;
+
+  /* surfaces */
+  --bg: #1c2127; /* app background */
+  --surface-1: #252c33; /* cards, bot bubble */
+  --surface-2: #2e363e; /* inputs, raised cards */
+  --surface-teal: #1b3338; /* highlighted cards, banners */
+  --border: #343c44;
+  --border-teal: #2a5c63;
+
+  /* brand */
+  --primary: #17a8b4; /* buttons, active states: use --text-on-primary on it */
+  --primary-hover: #1cbac7;
+  --accent: #4fd0d6; /* links, labels, highlights */
+  --user-bubble: #1f5961; /* user message (white text) */
+
+  /* text */
+  --text: #f2f6f7;
+  --text-muted: #9aa5ad;
+  --text-on-primary: #0b1418;
+  --text-on-user-bubble: #ffffff;
+
+  /* status */
+  --success: #3dd68c;
+  --warning: #f5b84b;
+  --danger: #f0616d;
+  --info: var(--accent);
+
+  /* brand mark (graduation cap in a white circle) */
+  --mark-bg: #ffffff;
+  --mark-fg: var(--primary);
+
+  /* shape and depth */
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-pill: 999px;
+  --glow-teal: 0 0 24px rgba(79, 208, 214, 0.25);
+
+  /* motion (DESIGN.md Section 7) */
+  --duration-fast: 150ms;
+  --duration-base: 250ms;
+  --duration-slow: 400ms;
+  --ease-standard: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  /* typography (DESIGN.md Section 2.3); --font-montserrat is set by next/font in layout.tsx */
+  --font-body: var(--font-montserrat), system-ui, sans-serif;
+}
+
+/* ---- light theme (optional, Should; DESIGN.md Section 2.2) ---- */
+/* Values not specified in DESIGN.md are placeholders to be confirmed in Figma. */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f4f8f9;
+  --surface-1: #ffffff;
+  --surface-2: #e9f0f2;
+  --surface-teal: #dceff1;
+  --border: #d3dde1;
+  --border-teal: #9fd0d5;
+  --primary: #0e8a95;
+  --primary-hover: #0b7680;
+  --accent: #0b7680;
+  --user-bubble: #1f5961;
+  --text: #12202a;
+  --text-muted: #51626d;
+  --text-on-primary: #0b1418; /* white on #0e8a95 is ~4.1:1 (fails AA) */
+  --mark-bg: #ffffff;
+  --glow-teal: 0 0 24px rgba(14, 138, 149, 0.2);
+}
+
+/* Follow the OS preference unless the user picked a theme explicitly (data-theme).
+   Keep this block identical to the [data-theme="light"] block above. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    color-scheme: light;
+    --bg: #f4f8f9;
+    --surface-1: #ffffff;
+    --surface-2: #e9f0f2;
+    --surface-teal: #dceff1;
+    --border: #d3dde1;
+    --border-teal: #9fd0d5;
+    --primary: #0e8a95;
+    --primary-hover: #0b7680;
+    --accent: #0b7680;
+    --user-bubble: #1f5961;
+    --text: #12202a;
+    --text-muted: #51626d;
+    --text-on-primary: #0b1418; /* white on #0e8a95 is ~4.1:1 (fails AA) */
+    --mark-bg: #ffffff;
+    --glow-teal: 0 0 24px rgba(14, 138, 149, 0.2);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+    --duration-base: 0ms;
+    --duration-slow: 0ms;
+  }
+}
