@@ -1,5 +1,6 @@
-"""LangGraph agent (D7, D15), built in M2.
+"""LangGraph agent (D7, D15, Architectural.md Section 6).
 
-Planned modules (Architectural.md Section 6): graph.py (the graph), state.py (AgentState),
-nodes/ (normalize, plan, tools, grade, compose, fallback), prompts.py (composer rules).
+graph.py (nodes and routing), state.py (AgentState, Plan), planner.py (LLM plan with a
+rule-based fallback), prompts.py (composer rules), templates.py (0-LLM answers), postcheck.py
+(invented-number check), cache.py (response cache), service.py (answer_question).
 Budget: at most 2 LLM calls and 1 embedding call per turn. Tests use FakeLLM."""

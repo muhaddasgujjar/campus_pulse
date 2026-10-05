@@ -73,8 +73,8 @@ migrate: ## Run Alembic migrations against DATABASE_URL_MIGRATIONS (Supabase ses
 seed: ## Load seed/lgu (idempotent). Uses DATABASE_URL, else a local pgserver database
 	cd $(API) && $(UV) run python -m app.cli seed ../../seed/lgu
 
-eval: ## Run the golden-set evaluation (stub metrics until M2)
-	$(PYTHON) eval/run.py
+eval: ## Golden-set evaluation, offline (no LLM, fake embedder). EVAL_ARGS="--live" uses real providers
+	cd $(API) && $(UV) run python -m app.evaluation ../../eval/golden.jsonl $(EVAL_ARGS)
 
 web-dev: ## Next.js dev server on http://localhost:3000
 	cd $(WEB) && $(NPM) run dev

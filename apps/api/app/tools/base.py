@@ -20,6 +20,17 @@ class Source:
     last_verified: date | None = None
     expired: bool = False
 
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "Source":
+        verified = data.get("last_verified")
+        return cls(
+            title=data["title"],
+            office=data.get("office"),
+            url=data.get("url"),
+            last_verified=date.fromisoformat(verified) if verified else None,
+            expired=bool(data.get("expired")),
+        )
+
     def as_dict(self) -> dict[str, Any]:
         return {
             "title": self.title,

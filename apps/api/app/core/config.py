@@ -63,11 +63,21 @@ class Settings(BaseSettings):
     embedding_dim: int = Field(default=768, gt=0)  # D17: vector(768)
     max_llm_calls_per_turn: int = Field(default=2, ge=0, le=2)  # COST-2
     embedding_batch_size: int = Field(default=16, ge=1, le=100)
+    llm_timeout_seconds: float = Field(default=25, gt=0)
+
+    # --- quota guard (COST-4). Gemini free limits are unpublished: copy yours from AI Studio.
+    # Empty = no local limit (the provider's 429 is still handled).
+    llm_rpm_limit: int | None = Field(default=None, ge=1)
+    llm_rpd_limit: int | None = Field(default=None, ge=1)
+    quota_max_wait_seconds: float = Field(default=20, ge=0, le=60)
+
+    # --- response cache (COST-3). In process now, Redis with data_version in M3.
+    response_cache_ttl_seconds: int = Field(default=3600, ge=0)
 
     # --- retrieval and grading (tune on the golden set, Architectural.md Section 6) ---
     retrieval_top_k: int = Field(default=5, ge=1, le=20)
     retrieval_min_similarity: float = Field(default=0.62, ge=0, le=1)
-    retrieval_min_keyword_coverage: float = Field(default=0.5, ge=0, le=1)
+    retrieval_min_keyword_coverage: float = Field(default=0.6, ge=0, le=1)
 
     # --- ingestion limits (Architectural.md Section 7) ---
     pdf_max_mb: int = Field(default=10, ge=1, le=50)
@@ -93,6 +103,8 @@ class Settings(BaseSettings):
         "supabase_jwt_secret",
         "gemini_api_key",
         "internal_jobs_secret",
+        "llm_rpm_limit",
+        "llm_rpd_limit",
         mode="before",
     )
     @classmethod
