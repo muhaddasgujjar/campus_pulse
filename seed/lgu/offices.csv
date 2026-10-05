@@ -1,1 +1,3 @@
-name,phones,email,hours,location,topics,last_verified,source_url,verified_by
+name,phones,email,hours,location,topics,last_verified,source_name
+Admission Office,0322-2757543|0329-4292976|042-37181827|042-37181821-22,admissions@lgu.edu.pk,"Monday to Friday, 08:00 to 16:00","Main Campus, Sector C, DHA Phase 6, Lahore",admission|admissions|apply|application|eligibility|entry test|admission fee|merit,2026-10-05,"LGU website, contact details (read 2026-10-05, confirm with office)"
+Exam Office,042-37181828,,"Monday to Friday, 08:00 to 16:00","Main Campus, Sector C, DHA Phase 6, Lahore",exam|exams|examination|datesheet|date sheet|midterm|final exam,2026-10-05,"LGU website, contact details (read 2026-10-05, confirm with office)"

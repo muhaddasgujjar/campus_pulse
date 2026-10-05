@@ -1,0 +1,18 @@
+{
+  "slug": "lgu",
+  "name": "Lahore Garrison University",
+  "config": {
+    "short_name": "LGU",
+    "disclaimer": "Answers are based on information verified by LGU offices. Please confirm important decisions with the relevant office.",
+    "fallback_office": "Admission Office",
+    "live_fetch_allowlist": ["lgu.edu.pk", "admissions.lgu.edu.pk"],
+    "starter_questions": [
+      "How do I apply?",
+      "What are the fees for BSCS?",
+      "What is my timetable?",
+      "How do I contact the Admission Office?",
+      "When is the last date to apply?",
+      "Who can apply for Computer Science programs?"
+    ]
+  }
+}

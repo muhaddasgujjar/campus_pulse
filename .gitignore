@@ -42,3 +42,4 @@ Thumbs.db
 
 # --- eval output ---
 eval/results/
+.localdb/
