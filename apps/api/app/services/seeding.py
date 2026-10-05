@@ -58,7 +58,7 @@ def _pipe_list(value: Any) -> list[str]:
     return [part.strip() for part in str(value).split("|") if part.strip()]
 
 
-class _Row(BaseModel):
+class SeedRow(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     @field_validator("*", mode="before")
@@ -67,12 +67,12 @@ class _Row(BaseModel):
         return _blank_to_none(value)
 
 
-class DepartmentRow(_Row):
+class DepartmentRow(SeedRow):
     name: str
     faculty: str | None = None
 
 
-class OfficeRow(_Row):
+class OfficeRow(SeedRow):
     name: str
     phones: list[str] = Field(default_factory=list)
     email: str | None = None
@@ -88,7 +88,7 @@ class OfficeRow(_Row):
         return _pipe_list(value)
 
 
-class FeeRow(_Row):
+class FeeRow(SeedRow):
     program_group: str
     level: str | None = None
     fiscal_year: str
@@ -101,7 +101,7 @@ class FeeRow(_Row):
     source_name: str
 
 
-class KeyDateRow(_Row):
+class KeyDateRow(SeedRow):
     title: str
     date: dt.date  # `dt.date`: the field named `date` shadows the type in this class body
     kind: str
@@ -111,7 +111,7 @@ class KeyDateRow(_Row):
     source_name: str
 
 
-class FacultyRow(_Row):
+class FacultyRow(SeedRow):
     name: str
     designation: str | None = None
     department: str | None = None
@@ -128,7 +128,7 @@ class FacultyRow(_Row):
         return _pipe_list(value)
 
 
-class TimetableRow(_Row):
+class TimetableRow(SeedRow):
     program: str
     semester: int = Field(ge=1, le=12)
     section: str | None = None
@@ -152,7 +152,7 @@ class TimetableRow(_Row):
         return value
 
 
-class KbEntryRow(_Row):
+class KbEntryRow(SeedRow):
     title: str
     question: str | None = None
     answer: str
@@ -165,7 +165,7 @@ class KbEntryRow(_Row):
     source_url: str | None = None
 
 
-RowT = TypeVar("RowT", bound=_Row)
+RowT = TypeVar("RowT", bound=SeedRow)
 
 
 @dataclass

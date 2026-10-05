@@ -62,6 +62,15 @@ class Settings(BaseSettings):
     embedding_model: str | None = None
     embedding_dim: int = Field(default=768, gt=0)  # D17: vector(768)
     max_llm_calls_per_turn: int = Field(default=2, ge=0, le=2)  # COST-2
+    embedding_batch_size: int = Field(default=16, ge=1, le=100)
+
+    # --- retrieval and grading (tune on the golden set, Architectural.md Section 6) ---
+    retrieval_top_k: int = Field(default=5, ge=1, le=20)
+    retrieval_min_similarity: float = Field(default=0.62, ge=0, le=1)
+    retrieval_min_keyword_coverage: float = Field(default=0.5, ge=0, le=1)
+
+    # --- ingestion limits (Architectural.md Section 7) ---
+    pdf_max_mb: int = Field(default=10, ge=1, le=50)
 
     # --- ops ---
     internal_jobs_secret: SecretStr | None = None
