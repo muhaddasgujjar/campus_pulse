@@ -1,10 +1,10 @@
 """Operations: audit log (ADM-2, rule 7) and daily usage (COST-4)."""
 
 import uuid
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import Date, ForeignKey, Integer, Text
+from sqlalchemy import Date, DateTime, ForeignKey, Integer, Text, func
 from sqlalchemy.dialects.postgresql import INET, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -13,6 +13,12 @@ from app.db.models.base import Base, Timestamps, UUIDPk
 
 class AuditLog(UUIDPk, Timestamps, Base):
     __tablename__ = "audit_log"
+
+    # clock_timestamp(), not now(): now() is fixed per transaction, so the actions of one admin
+    # write (create, update, approve) would share a timestamp and lose their order.
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.clock_timestamp(), nullable=False
+    )
 
     institution_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("institutions.id", ondelete="CASCADE"), index=True
