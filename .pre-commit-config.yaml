@@ -37,5 +37,5 @@ repos:
         name: block obvious secrets (API keys, JWTs, DB URLs with passwords)
         language: pygrep
         # Google API key | Supabase secret key | JWT | postgres URL with a password (not localhost)
-        entry: "(AIza[0-9A-Za-z_-]{35}|sb_secret_[0-9A-Za-z_-]{16,}|eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}|postgres(ql)?://[^:/\s]+:[^@\s]+@(?!localhost|127\.0\.0\.1|postgres:|redis:))"
+        entry: '(AIza[0-9A-Za-z_-]{35}|sb_secret_[0-9A-Za-z_-]{16,}|eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}|postgres(ql)?://[^:/\s]+:[^@\s]+@(?!localhost|127\.0\.0\.1|postgres:|redis:))'
         exclude: (^|/)(pnpm-lock\.yaml|uv\.lock)$
