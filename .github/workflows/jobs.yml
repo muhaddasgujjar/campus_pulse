@@ -1,0 +1,31 @@
+# Daily maintenance jobs: retention purge, expiry reminders, usage rollup, Supabase
+# keep-alive (Architectural.md Section 13). The endpoint POST /internal/jobs/daily is
+# built in M6. M1: manual trigger only. Requires secrets API_BASE_URL and INTERNAL_JOBS_SECRET.
+name: jobs
+
+on:
+  workflow_dispatch:
+  # M6: enable the daily schedule (03:00 UTC = 08:00 PKT).
+  # schedule:
+  #   - cron: "0 3 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  daily:
+    runs-on: ubuntu-latest
+    env:
+      API_BASE_URL: ${{ secrets.API_BASE_URL }}
+      INTERNAL_JOBS_SECRET: ${{ secrets.INTERNAL_JOBS_SECRET }}
+    steps:
+      - name: Call POST /internal/jobs/daily
+        run: |
+          if [ -z "$API_BASE_URL" ] || [ -z "$INTERNAL_JOBS_SECRET" ]; then
+            echo "API_BASE_URL or INTERNAL_JOBS_SECRET secret is not set. Skipping." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          # Render free may be asleep: allow a long timeout for the cold start.
+          curl -fsS --retry 3 --retry-delay 20 --max-time 120 \
+            -X POST "$API_BASE_URL/internal/jobs/daily" \
+            -H "X-Internal-Jobs-Secret: $INTERNAL_JOBS_SECRET"
