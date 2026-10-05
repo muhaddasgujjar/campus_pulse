@@ -1,0 +1,54 @@
+# Render Blueprint for the API (free plan, Docker runtime). Used in M6.
+# Render reads render.yaml from the repo ROOT by default. In M6 either copy this file
+# to the root or point the Blueprint at infra/render.yaml in the Render dashboard.
+# Values are NOT stored here: `sync: false` makes Render ask for each one in the dashboard.
+services:
+  - type: web
+    name: campus-pulse-api
+    runtime: docker
+    plan: free
+    region: singapore  # closest free region to Pakistan; confirm in the dashboard
+    branch: main
+    dockerfilePath: ./infra/Dockerfile
+    dockerContext: ./apps/api
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: APP_ENV
+        value: prod
+      - key: LOG_LEVEL
+        value: INFO
+      - key: INSTITUTION_SLUG
+        value: lgu
+      - key: CORS_ORIGINS
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_URL_MIGRATIONS
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_JWT_SECRET
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: LLM_PROVIDERS
+        value: gemini,template
+      - key: LLM_MODEL_FAST
+        sync: false
+      - key: LLM_MODEL_MAIN
+        sync: false
+      - key: EMBEDDING_MODEL
+        value: gemini-embedding-001
+      - key: EMBEDDING_DIM
+        value: "768"
+      - key: MAX_LLM_CALLS_PER_TURN
+        value: "2"
+      - key: CHAT_RETENTION_DAYS
+        value: "60"
+      - key: INTERNAL_JOBS_SECRET
+        sync: false
