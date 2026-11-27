@@ -41,6 +41,17 @@ export function verifiedBadge(sources: Source[]): Badge | null {
 
 const PASSED = /This date has passed\. Please confirm with the [^.]+\./g;
 
+/**
+ * Answers are shown as plain text. The composer is told not to use markdown; if an LLM still
+ * sends bold or heading markers, drop the markers and keep the words. "- " lists stay.
+ */
+export function stripMarkdown(text: string): string {
+  return text
+    .replace(/\*\*(.+?)\*\*/g, "$1")
+    .replace(/__(.+?)__/g, "$1")
+    .replace(/^#{1,6}\s+/gm, "");
+}
+
 export type AnswerParts = { body: string; passedNotices: string[] };
 
 /**
@@ -49,7 +60,7 @@ export type AnswerParts = { body: string; passedNotices: string[] };
  * rows (DESIGN.md Section 4, passed-date notice). The stored answer text is unchanged.
  */
 export function answerParts(text: string, hasSources: boolean): AnswerParts {
-  let body = text;
+  let body = stripMarkdown(text);
   if (hasSources) {
     const lines = body.split("\n");
     while (lines.length > 1 && /^Source: /.test(lines[lines.length - 1] ?? "")) lines.pop();

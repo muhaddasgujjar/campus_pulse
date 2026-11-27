@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { answerParts, formatDate, linkify, verifiedBadge } from "@/lib/chat/format";
+import { answerParts, formatDate, linkify, stripMarkdown, verifiedBadge } from "@/lib/chat/format";
 import { parseServerEvent, type Source } from "@/lib/chat/protocol";
 
 const source = (patch: Partial<Source> = {}): Source => ({
@@ -89,5 +89,18 @@ describe("parseServerEvent", () => {
     expect(parseServerEvent('{"type":"shout"}')).toBeNull();
     expect(parseServerEvent("not json")).toBeNull();
     expect(parseServerEvent("[1]")).toBeNull();
+  });
+});
+
+describe("stripMarkdown", () => {
+  it("drops bold and heading markers but keeps lists and the words", () => {
+    const text = "## Fees\n**Source:** Fee Structure\n- Admission fee: Rs 17,500\n__Note__ 2*3";
+    expect(stripMarkdown(text)).toBe(
+      "Fees\nSource: Fee Structure\n- Admission fee: Rs 17,500\nNote 2*3",
+    );
+  });
+
+  it("is applied before the answer is shown", () => {
+    expect(answerParts("**Rs 1,000** per credit hour", false).body).toBe("Rs 1,000 per credit hour");
   });
 });

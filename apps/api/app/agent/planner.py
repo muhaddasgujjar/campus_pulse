@@ -115,7 +115,7 @@ def rule_plan(query: str, profile: StudentProfile | None, today: date) -> Plan:
     text = query.strip()
     if _SMALLTALK.match(text):
         return Plan(intent="smalltalk")
-    if _PRIVATE.search(text) or _SENSITIVE.search(text):
+    if is_private_request(text):
         return Plan(intent="out_of_scope")
 
     program = find_program(text) or (profile.program if profile else None)
@@ -165,6 +165,12 @@ def rule_plan(query: str, profile: StudentProfile | None, today: date) -> Plan:
 def wants_explanation(query: str) -> bool:
     """Exact-data answers use templates unless the user asks for an explanation/comparison."""
     return bool(_EXPLAIN.search(query))
+
+
+def is_private_request(query: str) -> bool:
+    """Private records (results, attendance, fee status, passwords) or legal, medical and
+    disciplinary decisions: refused with the right office (D11, ANS-12)."""
+    return bool(_PRIVATE.search(query) or _SENSITIVE.search(query))
 
 
 def is_follow_up(query: str) -> bool:

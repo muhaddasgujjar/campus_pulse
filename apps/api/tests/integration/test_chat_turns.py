@@ -148,15 +148,16 @@ async def test_a_fallback_carries_the_office_for_the_fallback_card(
 async def test_follow_ups_reach_the_planner_with_history_and_skip_the_cache(
     db_session: AsyncSession, seeded: FakeEmbedder
 ) -> None:
-    bscs = {"intent": "structured", "tool": "get_fee", "args": {"program_group": "BSCS"}}
     bba = {"intent": "structured", "tool": "get_fee", "args": {"program_group": "BBA"}}
-    llm = FakeLLM([json.dumps(bscs), json.dumps(bba)])
+    llm = FakeLLM([json.dumps(bba)])
     services = make_services(db_session, seeded, llm)
     first = await turn(services, "What are the fees for BSCS?")  # template: 0 LLM calls
     conversation_id = uuid.UUID(first.of("ack")[0]["conversation_id"])
     follow_up = await turn(services, "And for BBA?", conversation_id)
-    assert "<history>" not in llm.calls[0][1]  # first turn: nothing to remember yet
-    planner_prompt = llm.calls[1][1]
+    # The first turn is exact data, answered by rules with no LLM call; the follow-up needs
+    # the history, so the LLM plans it.
+    assert len(llm.calls) >= 1
+    planner_prompt = llm.calls[0][1]
     assert "<history>" in planner_prompt and "What are the fees for BSCS?" in planner_prompt
     assert "Rs 7,392 per credit hour" in follow_up.text()
     again = await turn(services, "And for BBA?", conversation_id)

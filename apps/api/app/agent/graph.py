@@ -26,6 +26,7 @@ from app.agent.planner import (
     PLAN_SCHEMA,
     asks_office_hours,
     is_follow_up,
+    is_private_request,
     parse_plan,
     rule_plan,
     wants_explanation,
@@ -147,6 +148,17 @@ async def plan(state: AgentState, runtime: Runtime[AgentDeps]) -> dict[str, Any]
     # Rules decide greetings and private/sensitive requests without spending an LLM call.
     if rules.intent in ("smalltalk", "out_of_scope"):
         return {"plan": rules, "planned_by": "rules"}
+    # Rules first for exact data (D3, D15): a question the rules route to a table tool is
+    # answered from that table with no plan call. The LLM plans only what rules cannot:
+    # Urdu script, policies, follow-ups that need the history, and "why/compare" questions.
+    follow_up = bool(state.get("history")) and is_follow_up(query)
+    if (
+        rules.intent == "structured"
+        and rules.tool
+        and not follow_up
+        and not wants_explanation(query)
+    ):
+        return {"plan": rules, "planned_by": "rules"}
     result, counters, error = await _llm(
         state,
         deps,
@@ -174,8 +186,9 @@ async def simple(state: AgentState, runtime: Runtime[AgentDeps]) -> dict[str, An
         text = templates.thanks(short_name) if thanks else templates.greeting(short_name)
         return {"answer": text, "answer_mode": "simple", "sources": []}
     office = await _office_for(deps, state["redacted_query"])
+    private = is_private_request(state["redacted_query"])
     return {
-        "answer": templates.out_of_scope_text(office),
+        "answer": templates.out_of_scope_text(office, private=private),
         "answer_mode": "simple",
         "sources": [],
         "office_contact": office,
@@ -363,9 +376,13 @@ def after_plan(state: AgentState) -> str:
 def after_structured(state: AgentState) -> str:
     if state.get("tool_results") and not state.get("fallback_reason"):
         return "compose"
-    # Office lookup is free text ("where is the main campus?"): on a miss, try the approved
-    # knowledge base before giving up. Exact tables (fees, dates, timetable) fall back directly.
-    if state["plan"].tool == "get_office" and state.get("fallback_reason") == "no_structured_data":
+    # Office and date questions are often free text ("where is the main campus?", "when can I
+    # apply for a scholarship?"): on a miss, try the approved knowledge base before giving up.
+    # Fees and timetables are keyed by program, so they fall back directly.
+    if (
+        state["plan"].tool in ("get_office", "get_key_dates")
+        and state.get("fallback_reason") == "no_structured_data"
+    ):
         return "retrieve"
     return "fallback"
 
