@@ -6,12 +6,13 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import health, public
+from app.api import chat, chat_ws, health, public
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging, get_logger
 from app.core.middleware import RequestContextMiddleware
 from app.core.redis import create_redis
 from app.db.session import create_engine
+from app.services.chat import build_chat_services
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -27,6 +28,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             create_engine(settings.database_url) if settings.database_url else None
         )
         app.state.redis = create_redis(settings)
+        app.state.chat = build_chat_services(settings, app.state.db_engine, app.state.redis)
         log.info(
             "startup",
             env=settings.app_env,
@@ -63,6 +65,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(health.router)
     app.include_router(public.router)
+    app.include_router(chat.router)
+    app.include_router(chat_ws.router)
     return app
 
 

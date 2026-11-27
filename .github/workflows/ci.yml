@@ -106,3 +106,34 @@ jobs:
         run: npm test
       - name: Build
         run: npm run build
+
+  e2e:
+    name: e2e (Playwright chat smoke, desktop + phone)
+    runs-on: ubuntu-latest
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          version: "0.12.23"
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: apps/api/uv.lock
+      - name: Install API dependencies (includes the embedded Postgres used by api-local)
+        working-directory: apps/api
+        run: uv sync --frozen
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Install web dependencies
+        working-directory: apps/web
+        run: npm ci
+      - name: Install Chromium
+        working-directory: apps/web
+        run: npx playwright install --with-deps chromium
+      - name: Playwright (starts the API on :8001 and the web app on :3001)
+        working-directory: apps/web
+        run: npx playwright test

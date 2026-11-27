@@ -86,15 +86,15 @@ Review at the end of **W8** and **W11**. If behind, cut in this order:
 ### M3 · Real-time Chat MVP (W6-8)
 
 **Tasks**
-- [ ] WebSocket gateway (`/ws/chat`) streaming `status`, `token`, `sources`, `final` events.
-- [ ] Upstash Redis: session memory (last 6 turns), rate limiting, response cache with `data_version`, quota counters. At most 10 commands per turn, in-process fallback.
-- [ ] Chat UI per `DESIGN.md`: bubbles, streaming, typing and status, source chips and sheet, verified badge, fallback card, quick replies, feedback, disclaimer, starter questions.
-- [ ] Reconnect and resume (CHAT-9).
-- [ ] Cold-start handling (COST-6): wake ping on page load, "waking up" state, WebSocket retry with backoff. Test with a sleeping Render service.
-- [ ] Anonymous sessions (`anon_id`), conversation history endpoint.
-- [ ] Feedback endpoint and `unanswered_queries` logging.
-- [ ] Playwright smoke tests for the main chat flow.
-- [ ] Golden set grows to 100 items. Re-run eval.
+- [x] WebSocket gateway (`/ws/chat`) streaming `status`, `token`, `sources`, `final` events. (2026-11-27; the answer streams after the post-check, see Architectural.md Section 8)
+- [x] Upstash Redis: session memory (last 6 turns), rate limiting, response cache with `data_version`, quota counters. At most 10 commands per turn, in-process fallback. (2026-11-27, tested with fakeredis; not yet run against a real Upstash database. `data_version` is the newest audit_log row)
+- [x] Chat UI per `DESIGN.md`: bubbles, streaming, typing and status, source chips and sheet, verified badge, fallback card, quick replies, feedback, disclaimer, starter questions. (2026-11-27)
+- [x] Reconnect and resume (CHAT-9). (2026-11-27)
+- [ ] Cold-start handling (COST-6): wake ping on page load, "waking up" state, WebSocket retry with backoff. Test with a sleeping Render service. (2026-11-27: built and unit tested; the test with a sleeping Render service waits for the M6 deployment)
+- [x] Anonymous sessions (`anon_id`), conversation history endpoint. (2026-11-27: anonymous by IP until M5 auth; the server-generated conversation id in localStorage identifies the chat)
+- [x] Feedback endpoint and `unanswered_queries` logging. (2026-11-27)
+- [x] Playwright smoke tests for the main chat flow. (2026-11-27, desktop and phone, in CI)
+- [ ] Golden set grows to 100 items. Re-run eval. (Blocked: needs the 100 collected student questions from M1. Offline eval re-run 2026-11-27: 91%, 63/69)
 
 **Exit criteria:** end-to-end chat works on a phone browser. p95 first token under 4 s with the server awake. Rate limit and quota guard work. Golden set at least 85%.
 **Checkpoint at the end of W8:** apply the cut rules if needed. **MVP is complete here.**

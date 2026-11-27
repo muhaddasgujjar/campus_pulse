@@ -25,6 +25,8 @@ from app.agent.language import detect_language
 from app.agent.planner import (
     PLAN_SCHEMA,
     asks_office_hours,
+    is_follow_up,
+    is_private_request,
     parse_plan,
     rule_plan,
     wants_explanation,
@@ -34,7 +36,7 @@ from app.agent.prompts import PLANNER_SYSTEM, composer_prompt, composer_system, 
 from app.agent.state import AgentDeps, AgentState, Plan
 from app.core.logging import get_logger
 from app.core.redact import redact
-from app.db.repositories.agent_log import add_usage, log_unanswered
+from app.db.repositories.agent_log import add_usage, data_version, log_unanswered
 from app.services.llm import LLMBudgetError, LLMProviderError, LLMResult
 from app.services.retrieval import grade
 from app.tools import ToolContext, run_tool
@@ -101,13 +103,20 @@ async def normalize(state: AgentState, runtime: Runtime[AgentDeps]) -> dict[str,
     redacted = redact(query)  # before anything is stored or sent to the LLM (SEC-3, SEC-5)
     language = detect_language(query)
     profile = state.get("profile")
-    version = deps.cache.data_version if deps.cache is not None else 0
+    use_cache = deps.cache is not None and not (state.get("history") and is_follow_up(query))
+    # Read the content version only when there is a cache to key (one indexed query).
+    version = await data_version(deps.session, deps.institution_id) if use_cache else "0"
     return {
+        "use_cache": use_cache,
         "redacted_query": redacted,
         "language": language,
         "today": deps.today,
         "cache_key": cache_key(
-            normalize_query(redacted), language, profile.program if profile else None, version
+            normalize_query(redacted),
+            language,
+            profile.program if profile else None,
+            version,
+            deps.today,
         ),
         "llm_calls": 0,
         "tokens_in": 0,
@@ -122,7 +131,7 @@ async def normalize(state: AgentState, runtime: Runtime[AgentDeps]) -> dict[str,
 
 async def cache_lookup(state: AgentState, runtime: Runtime[AgentDeps]) -> dict[str, Any]:
     deps = runtime.context
-    if deps.cache is None:
+    if deps.cache is None or not state.get("use_cache"):
         return {}
     hit = await deps.cache.get(state["cache_key"])
     if hit is None:
@@ -139,10 +148,21 @@ async def plan(state: AgentState, runtime: Runtime[AgentDeps]) -> dict[str, Any]
     # Rules decide greetings and private/sensitive requests without spending an LLM call.
     if rules.intent in ("smalltalk", "out_of_scope"):
         return {"plan": rules, "planned_by": "rules"}
+    # Rules first for exact data (D3, D15): a question the rules route to a table tool is
+    # answered from that table with no plan call. The LLM plans only what rules cannot:
+    # Urdu script, policies, follow-ups that need the history, and "why/compare" questions.
+    follow_up = bool(state.get("history")) and is_follow_up(query)
+    if (
+        rules.intent == "structured"
+        and rules.tool
+        and not follow_up
+        and not wants_explanation(query)
+    ):
+        return {"plan": rules, "planned_by": "rules"}
     result, counters, error = await _llm(
         state,
         deps,
-        planner_prompt(query, profile, deps.today),
+        planner_prompt(query, profile, deps.today, state.get("history")),
         "fast",
         system=PLANNER_SYSTEM,
         json_schema=PLAN_SCHEMA,
@@ -166,8 +186,9 @@ async def simple(state: AgentState, runtime: Runtime[AgentDeps]) -> dict[str, An
         text = templates.thanks(short_name) if thanks else templates.greeting(short_name)
         return {"answer": text, "answer_mode": "simple", "sources": []}
     office = await _office_for(deps, state["redacted_query"])
+    private = is_private_request(state["redacted_query"])
     return {
-        "answer": templates.out_of_scope_text(office),
+        "answer": templates.out_of_scope_text(office, private=private),
         "answer_mode": "simple",
         "sources": [],
         "office_contact": office,
@@ -319,7 +340,12 @@ async def finalize(state: AgentState, runtime: Runtime[AgentDeps]) -> dict[str, 
         fallbacks=1 if is_fallback else 0,
     )
     cacheable = state["answer_mode"] in ("template", "llm", "extractive")
-    if deps.cache is not None and cacheable and not state.get("cache_hit"):
+    if (
+        deps.cache is not None
+        and state.get("use_cache")
+        and cacheable
+        and not state.get("cache_hit")
+    ):
         await deps.cache.set(
             state["cache_key"],
             CachedAnswer(
@@ -350,9 +376,13 @@ def after_plan(state: AgentState) -> str:
 def after_structured(state: AgentState) -> str:
     if state.get("tool_results") and not state.get("fallback_reason"):
         return "compose"
-    # Office lookup is free text ("where is the main campus?"): on a miss, try the approved
-    # knowledge base before giving up. Exact tables (fees, dates, timetable) fall back directly.
-    if state["plan"].tool == "get_office" and state.get("fallback_reason") == "no_structured_data":
+    # Office and date questions are often free text ("where is the main campus?", "when can I
+    # apply for a scholarship?"): on a miss, try the approved knowledge base before giving up.
+    # Fees and timetables are keyed by program, so they fall back directly.
+    if (
+        state["plan"].tool in ("get_office", "get_key_dates")
+        and state.get("fallback_reason") == "no_structured_data"
+    ):
         return "retrieve"
     return "fallback"
 

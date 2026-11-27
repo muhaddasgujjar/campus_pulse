@@ -14,7 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agent.cache import InMemoryResponseCache
 from app.agent.service import AgentAnswer, answer_question, make_deps
 from app.agent.state import StudentProfile
-from app.db.models import KbEntry, UnansweredQuery, UsageDaily
+from app.db.models import Institution, KbEntry, UnansweredQuery, UsageDaily
+from app.services import audit
 from app.services.embeddings import FakeEmbedder
 from app.services.ingestion import index_entry
 from app.services.llm import FakeLLM, LLMRouter
@@ -82,13 +83,15 @@ async def test_fee_answer_matches_the_table_with_no_llm(
     assert result.sources and "last verified Mon, 5 Oct 2026" in result.answer
 
 
-async def test_english_fee_question_skips_compose_even_with_an_llm(
+async def test_rules_answer_exact_data_with_no_llm_call_even_with_an_llm(
     db_session: AsyncSession, embedder: FakeEmbedder
 ) -> None:
-    llm = FakeLLM([plan_json(intent="structured", tool="get_fee", args={"program_group": "BBA"})])
+    """Rules first (D3, D15): a fee question the rules can route never reaches the LLM, so
+    an LLM planner cannot send it to document search instead of the fee table."""
+    llm = FakeLLM([plan_json(intent="knowledge", retrieval_query="BBA fee structure")])
     result = await ask(db_session, embedder, "What is the BBA fee?", llm=llm)
-    assert result.mode == "template"
-    assert [tier for tier, _ in llm.calls] == ["fast"]  # plan only, template answer
+    assert (result.mode, result.planned_by, result.tool_used) == ("template", "rules", "get_fee")
+    assert llm.calls == []  # no plan call, template answer
     assert "Rs 7,392 per credit hour" in result.answer
     assert "admission fee" not in result.answer  # not in the source, never invented
 
@@ -203,25 +206,21 @@ async def test_llm_answer_in_roman_urdu_passes_post_check(
 ) -> None:
     llm = FakeLLM(
         [
-            plan_json(intent="structured", tool="get_fee", args={"program_group": "BSCS"}),
             "BSCS ki tuition Rs 7,744 per credit hour hai (FY 2026-27).",
         ]
     )
     result = await ask(db_session, embedder, "BSCS ki fee kitni hai?", llm=llm)
-    assert (result.language, result.mode, result.llm_calls) == ("roman_ur", "llm", 2)
-    assert "Roman Urdu" in (llm.systems[1] or "")
+    # planned by rules (0 calls), composed in Roman Urdu by the LLM (1 call)
+    assert (result.language, result.mode, result.llm_calls) == ("roman_ur", "llm", 1)
+    assert result.planned_by == "rules"
+    assert "Roman Urdu" in (llm.systems[0] or "")
     assert result.answer.startswith("BSCS ki tuition Rs 7,744")
 
 
 async def test_invented_number_is_replaced_by_the_template(
     db_session: AsyncSession, embedder: FakeEmbedder
 ) -> None:
-    llm = FakeLLM(
-        [
-            plan_json(intent="structured", tool="get_fee", args={"program_group": "BSCS"}),
-            "BSCS ki tuition Rs 9,999 per credit hour hai (FY 2026-27).",
-        ]
-    )
+    llm = FakeLLM(["BSCS ki tuition Rs 9,999 per credit hour hai (FY 2026-27)."])
     result = await ask(db_session, embedder, "BSCS ki fee kitni hai?", llm=llm)
     assert result.mode == "template"
     assert "9,999" not in result.answer and "Rs 7,744" in result.answer
@@ -230,12 +229,7 @@ async def test_invented_number_is_replaced_by_the_template(
 async def test_composer_no_answer_becomes_a_fallback(
     db_session: AsyncSession, embedder: FakeEmbedder
 ) -> None:
-    llm = FakeLLM(
-        [
-            plan_json(intent="structured", tool="get_fee", args={"program_group": "BSCS"}),
-            "NO_ANSWER",
-        ]
-    )
+    llm = FakeLLM(["NO_ANSWER"])
     result = await ask(db_session, embedder, "BSCS ki fee kitni hai?", llm=llm)
     assert result.fallback and result.fallback_reason == "composer_no_answer"
 
@@ -247,25 +241,31 @@ async def test_provider_down_uses_rules_and_templates(
     result = await ask(db_session, embedder, "BSCS ki fee kitni hai?", llm=llm)
     assert (result.planned_by, result.mode) == ("rules", "template")
     assert "Rs 7,744" in result.answer
-    assert result.llm_calls == 2  # failed attempts still count: they may have used quota
+    # rules planned it (0 calls); the failed compose attempt still counts: it may use quota
+    assert result.llm_calls == 1
 
 
 async def test_llm_plan_with_an_unknown_tool_is_ignored(
     db_session: AsyncSession, embedder: FakeEmbedder
 ) -> None:
+    """Urdu script: the rules cannot route it, so the LLM plans it. A plan naming a tool that
+    is not in the catalog (D10) is rejected and the rules' plan is used instead."""
     llm = FakeLLM([plan_json(intent="structured", tool="run_sql", args={"sql": "select 1"})])
-    result = await ask(db_session, embedder, "What are the fees for BSCS?", llm=llm)
-    assert result.planned_by == "rules" and result.tool_used == "get_fee"
+    result = await ask(db_session, embedder, "بی ایس سی ایس کی فیس کتنی ہے؟", llm=llm)
+    assert len(llm.calls) >= 1 and llm.calls[0][0] == "fast"  # the plan call happened
+    assert result.planned_by == "rules" and result.tool_used != "run_sql"
 
 
 async def test_budget_setting_caps_llm_calls(
     db_session: AsyncSession, embedder: FakeEmbedder
 ) -> None:
+    """Urdu script needs the LLM plan (call 1); with a budget of 1 the answer is a template."""
     llm = FakeLLM([plan_json(intent="structured", tool="get_fee", args={"program_group": "BSCS"})])
     result = await ask(
-        db_session, embedder, "BSCS ki fee kitni hai?", llm=llm, max_llm_calls_per_turn=1
+        db_session, embedder, "بی ایس سی ایس کی فیس کتنی ہے؟", llm=llm, max_llm_calls_per_turn=1
     )
-    assert len(llm.calls) == 1 and result.mode == "template"
+    assert len(llm.calls) == 1 and result.planned_by == "llm"
+    assert result.mode == "template" and "Rs 7,744" in result.answer
 
 
 # --- cache, redaction, usage --------------------------------------------------------------------
@@ -279,7 +279,17 @@ async def test_repeat_question_is_served_from_cache_until_data_changes(
     second = await ask(db_session, embedder, "what are the fees for bscs", cache=cache)
     assert (first.cache_hit, second.cache_hit, second.mode) == (False, True, "cache")
     assert second.answer == first.answer and second.sources == first.sources
-    await cache.bump_version()  # a staff edit
+    institution_id = (await db_session.execute(select(Institution.id))).scalar_one()
+    audit.record(  # a staff edit: every content write records an audit row (rule 7)
+        db_session,
+        institution_id=institution_id,
+        action="update",
+        table_name="fees",
+        row_id=None,
+        diff={},
+        actor_label="test",
+    )
+    await db_session.flush()
     third = await ask(db_session, embedder, "What are the fees for BSCS?", cache=cache)
     assert not third.cache_hit
 
@@ -329,3 +339,35 @@ async def test_one_matching_word_is_not_enough_for_a_short_question(
     """'hostel fee' shares only 'hostel' with the policies entry: fall back, don't quote it."""
     result = await ask(db_session, embedder, "What is the hostel fee?")
     assert result.fallback
+
+
+# --- rules first (D3, D15) and refusal wording (ANS-12) ---------------------------------------
+
+
+async def test_why_and_compare_questions_are_still_planned_by_the_llm(
+    db_session: AsyncSession, embedder: FakeEmbedder
+) -> None:
+    """The rules would pick one program's fee row; a comparison needs the LLM plan."""
+    llm = FakeLLM([plan_json(intent="structured", tool="get_fee", args={"program_group": "BSCS"})])
+    result = await ask(db_session, embedder, "Why is the BSCS fee higher than BBA?", llm=llm)
+    assert result.planned_by == "llm" and llm.calls[0][0] == "fast"
+
+
+async def test_a_date_question_with_no_matching_row_tries_the_knowledge_base(
+    db_session: AsyncSession, embedder: FakeEmbedder
+) -> None:
+    """'when' questions are often free text: a key-dates miss falls through to retrieval."""
+    result = await ask(db_session, embedder, "When does the semester start?")
+    assert result.planned_by == "rules" and result.intent == "structured"
+    assert result.fallback and (result.fallback_reason or "").startswith("retrieval_")
+    assert embedder.calls == 1
+
+
+async def test_off_topic_refusal_does_not_talk_about_personal_records(
+    db_session: AsyncSession, embedder: FakeEmbedder
+) -> None:
+    llm = FakeLLM([plan_json(intent="out_of_scope")])
+    result = await ask(db_session, embedder, "Write me a poem about cricket", llm=llm)
+    assert result.mode == "simple"
+    assert result.answer.startswith("I can only help with questions about the university")
+    assert "personal records" not in result.answer

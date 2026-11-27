@@ -202,11 +202,17 @@ def fallback_text(office: dict[str, Any] | None) -> str:
     return f"I don't have verified information on this. {contact_text(office)}"
 
 
-def out_of_scope_text(office: dict[str, Any] | None) -> str:
+def out_of_scope_text(office: dict[str, Any] | None, *, private: bool = True) -> str:
+    """A short refusal (ANS-12). Private-record wording only for private-record requests."""
+    if private:
+        return (
+            "I can't help with that here. I can only answer from verified university "
+            "information, and I can't access personal records such as results, attendance or "
+            "fee status. " + contact_text(office)
+        )
     return (
-        "I can't help with that here. I can only answer from verified university information, "
-        "and I can't access personal records such as results, attendance or fee status. "
-        + contact_text(office)
+        "I can only help with questions about the university, using verified university "
+        "information. " + contact_text(office)
     )
 
 

@@ -51,3 +51,81 @@
     outline-offset: 2px;
   }
 }
+
+/* Motion (DESIGN.md Section 7): bubble fade-and-rise, caret blink, typing dots, sheet rise. */
+@layer components {
+  .bubble-in {
+    animation: bubble-in var(--duration-base) var(--ease-standard) both;
+  }
+
+  .sheet-rise {
+    animation: bubble-in var(--duration-base) var(--ease-standard) both;
+  }
+
+  .caret {
+    display: inline-block;
+    width: 2px;
+    height: 1em;
+    margin-inline-start: 2px;
+    vertical-align: text-bottom;
+    background-color: var(--accent);
+    animation: caret-blink 1s steps(1) infinite;
+  }
+
+  .typing-dots {
+    display: inline-flex;
+    gap: 4px;
+  }
+
+  .typing-dots span {
+    width: 6px;
+    height: 6px;
+    border-radius: var(--radius-pill);
+    background-color: var(--text-muted);
+    animation: typing 1.2s var(--ease-standard) infinite;
+  }
+
+  .typing-dots span:nth-child(2) {
+    animation-delay: 0.15s;
+  }
+
+  .typing-dots span:nth-child(3) {
+    animation-delay: 0.3s;
+  }
+}
+
+@keyframes bubble-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes caret-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+@keyframes typing {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bubble-in,
+  .sheet-rise,
+  .caret,
+  .typing-dots span {
+    animation: none;
+  }
+}

@@ -34,20 +34,25 @@ def database_url(db_name: str = "campus_pulse_local", data_dir: Path | None = No
     exists = server.psql(f"select 1 from pg_database where datname = '{db_name}';")  # noqa: S608
     if "(1 row)" not in exists:
         server.psql(f'create database "{db_name}";')
-    base: str = server.get_uri()
-    return base.rsplit("/", 1)[0] + f"/{db_name}"
+    # On Linux and macOS pgserver connects through a Unix socket
+    # ("postgresql://postgres:@/<db>?host=<socket dir>"), so let it build the URI.
+    uri: str = server.get_uri(database=db_name)
+    return uri
 
 
 def migrate(url: str) -> None:
     """Run `alembic upgrade head` against `url` (session-capable URL)."""
     env = dict(os.environ, DATABASE_URL_MIGRATIONS=url)
-    subprocess.run(
+    result = subprocess.run(
         [sys.executable, "-m", "alembic", "upgrade", "head"],
         cwd=API_DIR,
         env=env,
-        check=True,
+        check=False,
         capture_output=True,
+        text=True,
     )
+    if result.returncode != 0:  # show Alembic's own error instead of only the exit code
+        raise RuntimeError(f"alembic upgrade head failed:\n{result.stdout}{result.stderr}")
 
 
 if __name__ == "__main__":

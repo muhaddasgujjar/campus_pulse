@@ -48,6 +48,11 @@ _OFFICE = re.compile(
 _OFFICE_HOURS = re.compile(
     r"\b(office\s+(hours|timings?)|timings?|opening\s+hours|working\s+hours|open)\b", re.I
 )
+_FOLLOW_UP = re.compile(
+    r"^\s*(and|what\s+about|how\s+about|also|then|or|aur|phir)\b"
+    r"|\b(it|that|this|those|them|they|its|same|wo|woh|ye|yeh|us|iski|uski|unki)\b",
+    re.IGNORECASE,
+)
 _FACULTY = re.compile(
     r"\b(teacher|teaches|faculty\s+member|professor|lecturer|instructor)\b|\bdr\.", re.I
 )
@@ -110,7 +115,7 @@ def rule_plan(query: str, profile: StudentProfile | None, today: date) -> Plan:
     text = query.strip()
     if _SMALLTALK.match(text):
         return Plan(intent="smalltalk")
-    if _PRIVATE.search(text) or _SENSITIVE.search(text):
+    if is_private_request(text):
         return Plan(intent="out_of_scope")
 
     program = find_program(text) or (profile.program if profile else None)
@@ -160,6 +165,18 @@ def rule_plan(query: str, profile: StudentProfile | None, today: date) -> Plan:
 def wants_explanation(query: str) -> bool:
     """Exact-data answers use templates unless the user asks for an explanation/comparison."""
     return bool(_EXPLAIN.search(query))
+
+
+def is_private_request(query: str) -> bool:
+    """Private records (results, attendance, fee status, passwords) or legal, medical and
+    disciplinary decisions: refused with the right office (D11, ANS-12)."""
+    return bool(_PRIVATE.search(query) or _SENSITIVE.search(query))
+
+
+def is_follow_up(query: str) -> bool:
+    """'And semester 2?', 'What about BBA?', 'Is it open on Saturday?': the meaning depends on
+    earlier turns, so the answer must not be cached or served from the cache (COST-3)."""
+    return len(query.split()) <= 8 and bool(_FOLLOW_UP.search(query))
 
 
 def asks_office_hours(query: str) -> bool:

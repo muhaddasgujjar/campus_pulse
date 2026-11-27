@@ -1,12 +1,14 @@
-"""Writes made by the agent: unanswered queries (ANS-5, DATA-7) and daily usage (COST-4)."""
+"""Agent reads and writes: unanswered queries (ANS-5, DATA-7), daily usage (COST-4) and the
+content version for the response cache (COST-3)."""
 
 import uuid
 from datetime import date
 
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import UnansweredQuery, UsageDaily
+from app.db.models import AuditLog, UnansweredQuery, UsageDaily
 
 
 async def log_unanswered(
@@ -56,3 +58,12 @@ async def add_usage(
         },
     )
     await session.execute(stmt)
+
+
+async def data_version(session: AsyncSession, institution_id: uuid.UUID) -> str:
+    """Changes whenever content changes: every admin write records an audit row in the same
+    transaction (rule 7), so the newest audit timestamp versions the data (COST-3)."""
+    latest = await session.scalar(
+        select(func.max(AuditLog.created_at)).where(AuditLog.institution_id == institution_id)
+    )
+    return latest.isoformat() if latest is not None else "0"

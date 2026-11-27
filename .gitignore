@@ -27,6 +27,9 @@ out/
 next-env.d.ts
 coverage/
 .vercel/
+test-results/
+playwright-report/
+blob-report/
 .pnpm-store/
 npm-debug.log*
 pnpm-debug.log*

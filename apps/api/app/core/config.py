@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     # --- institution (ADP-2: institution text lives in config, not in code paths) ---
     institution_slug: str = "lgu"
     institution_disclaimer: str = DEFAULT_DISCLAIMER
+    # "Today" for date answers (rule 3) is the institution's local date, not the server's UTC
+    # date. Pakistan is UTC+5 with no daylight saving time.
+    institution_utc_offset_hours: float = Field(default=5, ge=-12, le=14)
 
     # --- database (Supabase Postgres via the pooler) ---
     database_url: str | None = None  # transaction pooler, used by the app
@@ -79,8 +82,15 @@ class Settings(BaseSettings):
     groq_rpd_limit: int | None = Field(default=None, ge=1)
     quota_max_wait_seconds: float = Field(default=20, ge=0, le=60)
 
-    # --- response cache (COST-3). In process now, Redis with data_version in M3.
+    # --- response cache (COST-3): Redis when REDIS_URL is set, else in process. 0 = off.
     response_cache_ttl_seconds: int = Field(default=3600, ge=0)
+
+    # --- chat (M3): rate limit per IP (CHAT-7) and session memory (CHAT-5) ---
+    chat_rate_limit_messages: int = Field(default=20, ge=1)
+    chat_rate_limit_window_seconds: int = Field(default=600, ge=1)
+    session_memory_turns: int = Field(default=6, ge=0, le=20)
+    session_memory_ttl_seconds: int = Field(default=86400, ge=60)
+    chat_max_message_chars: int = Field(default=1000, ge=10, le=2000)  # SEC-2 input limit
 
     # --- retrieval and grading (tune on the golden set, Architectural.md Section 6) ---
     retrieval_top_k: int = Field(default=5, ge=1, le=20)
@@ -93,6 +103,14 @@ class Settings(BaseSettings):
     # --- ops ---
     internal_jobs_secret: SecretStr | None = None
     chat_retention_days: int = Field(default=60, gt=0)
+
+    @field_validator("institution_disclaimer", mode="before")
+    @classmethod
+    def _default_disclaimer(cls, value: object) -> object:
+        """`INSTITUTION_DISCLAIMER=` (empty, as in .env.example) keeps the default (CHAT-8)."""
+        if value is None or (isinstance(value, str) and not value.strip()):
+            return DEFAULT_DISCLAIMER
+        return value
 
     @field_validator("cors_origins", "llm_providers", mode="before")
     @classmethod
