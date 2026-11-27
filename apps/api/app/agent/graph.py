@@ -22,7 +22,13 @@ from langgraph.runtime import Runtime
 from app.agent import templates
 from app.agent.cache import CachedAnswer, cache_key, normalize_query
 from app.agent.language import detect_language
-from app.agent.planner import PLAN_SCHEMA, parse_plan, rule_plan, wants_explanation
+from app.agent.planner import (
+    PLAN_SCHEMA,
+    asks_office_hours,
+    parse_plan,
+    rule_plan,
+    wants_explanation,
+)
 from app.agent.postcheck import check_llm_answer, ensure_required_notes
 from app.agent.prompts import PLANNER_SYSTEM, composer_prompt, composer_system, planner_prompt
 from app.agent.state import AgentDeps, AgentState, Plan
@@ -33,7 +39,7 @@ from app.services.llm import LLMBudgetError, LLMProviderError, LLMResult
 from app.services.retrieval import grade
 from app.tools import ToolContext, run_tool
 from app.tools.base import Source, ToolResult, dedupe_sources
-from app.tools.offices import OfficeArgs, get_office
+from app.tools.offices import OfficeArgs, all_offices, get_office
 from app.tools.search import SearchArgs, search_knowledge
 
 log = get_logger("agent")
@@ -177,6 +183,9 @@ async def structured(state: AgentState, runtime: Runtime[AgentDeps]) -> dict[str
     except (KeyError, ValueError) as exc:
         log.warning("tool_args_rejected", tool=current.tool, error=str(exc))
         return {"tool_results": [], "fallback_reason": "invalid_tool_args"}
+    if not result.found and current.tool == "get_office" and asks_office_hours(state["query"]):
+        # Opening hours without an office name: answer with every office's own hours.
+        result = await all_offices(_tool_ctx(deps))
     if not result.found:
         return {"tool_results": [result], "fallback_reason": "no_structured_data"}
     return {"tool_results": [result]}

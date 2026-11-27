@@ -75,6 +75,11 @@ async def find_offices(
     return await _all(session, stmt)
 
 
+async def list_offices(session: AsyncSession, institution_id: uuid.UUID) -> Sequence[Office]:
+    stmt = select(Office).where(Office.institution_id == institution_id).order_by(Office.name)
+    return await _all(session, stmt)
+
+
 async def find_key_dates(
     session: AsyncSession,
     institution_id: uuid.UUID,

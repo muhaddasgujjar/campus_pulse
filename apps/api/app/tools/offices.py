@@ -1,7 +1,10 @@
 """get_office(name_or_topic): office contacts by name or topic (also used by the fallback)."""
 
+from collections.abc import Sequence
+
 from pydantic import BaseModel, Field
 
+from app.db.models import Office
 from app.db.repositories import structured as repo
 from app.tools.base import Source, ToolContext, ToolResult, oldest
 
@@ -12,8 +15,7 @@ class OfficeArgs(BaseModel):
     )
 
 
-async def get_office(ctx: ToolContext, args: OfficeArgs) -> ToolResult:
-    rows = await repo.find_offices(ctx.session, ctx.institution_id, args.name_or_topic)
+def _result(rows: Sequence[Office]) -> ToolResult:
     data = [
         {
             "name": row.name,
@@ -40,3 +42,12 @@ async def get_office(ctx: ToolContext, args: OfficeArgs) -> ToolResult:
         last_verified=oldest([row.last_verified for row in rows]),
         owner=rows[0].name if rows else None,
     )
+
+
+async def get_office(ctx: ToolContext, args: OfficeArgs) -> ToolResult:
+    return _result(await repo.find_offices(ctx.session, ctx.institution_id, args.name_or_topic))
+
+
+async def all_offices(ctx: ToolContext) -> ToolResult:
+    """Every office, for questions that name none ("what are the office timings?")."""
+    return _result(await repo.list_offices(ctx.session, ctx.institution_id))

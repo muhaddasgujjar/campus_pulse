@@ -45,6 +45,9 @@ _OFFICE = re.compile(
     r"timings?|open|rabta)\b",
     re.IGNORECASE,
 )
+_OFFICE_HOURS = re.compile(
+    r"\b(office\s+(hours|timings?)|timings?|opening\s+hours|working\s+hours|open)\b", re.I
+)
 _FACULTY = re.compile(
     r"\b(teacher|teaches|faculty\s+member|professor|lecturer|instructor)\b|\bdr\.", re.I
 )
@@ -157,6 +160,11 @@ def rule_plan(query: str, profile: StudentProfile | None, today: date) -> Plan:
 def wants_explanation(query: str) -> bool:
     """Exact-data answers use templates unless the user asks for an explanation/comparison."""
     return bool(_EXPLAIN.search(query))
+
+
+def asks_office_hours(query: str) -> bool:
+    """'What are the office timings?': opening hours without naming an office."""
+    return bool(_OFFICE_HOURS.search(query))
 
 
 # --- LLM planning ----------------------------------------------------------------------------

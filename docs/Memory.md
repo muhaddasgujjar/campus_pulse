@@ -121,7 +121,7 @@ Milestones follow the proposal (M1 to M7). Tick items when done and add the date
 - [ ] **M7 Testing and Final Delivery** (W17)
 
 **Current milestone:** M2 (M1 code done; M1 accounts, limits and the 100 questions still open)
-**Current focus:** M2 code complete on branch `feat/M2-data-rag` (2026-10-05): schema, seeds, tools, ingestion, retrieval, agent, CLI, eval. Next: run the migration and seed on the dev Supabase project, run `make eval EVAL_ARGS="--live"` with a Gemini key, get faculty and timetable data from the offices.
+**Current focus:** M2 code complete and pushed on branch `feat/M2-data-rag` (2026-11-27, no PR yet): schema, seeds, tools, ingestion, retrieval, agent, CLI, eval. Next: run the migration and seed on the dev Supabase project, run `make eval EVAL_ARGS="--live"` with a Gemini key, get faculty and timetable data from the offices.
 **Blocked on:** `DATABASE_URL` for `campus-pulse-dev` in `apps/api/.env` (to seed and import), a Groq key (live eval) and a Gemini key (embeddings). Staff review of the imported pages. Verified faculty and timetable data from the offices.
 
 **M1 scaffold checklist** (see `Phases.md` M1 for the full task list)
@@ -161,7 +161,7 @@ Milestones follow the proposal (M1 to M7). Tick items when done and add the date
 **Groq model IDs (defaults in `.env.example`):** fast = `openai/gpt-oss-20b` · main = `openai/gpt-oss-120b` · reasoning effort `low`
 
 **Pinned tool versions (2026-10-05, from PyPI and npm):** Python 3.12, uv 0.12.23, FastAPI 0.142.2, Pydantic 2.13.5, pydantic-settings 2.15.0, SQLAlchemy 2.1.3, Alembic 1.20.0, asyncpg 0.31.0, structlog 26.1.0, redis-py 8.1.0, pytest 9.1.1, ruff 0.16.10, mypy 2.4.0 · Node 24 LTS, npm (switched from pnpm 11: its downloads hung on this network), Next.js 16.3.8, React 19.2.8 (what create-next-app 16.3.8 selects), Tailwind 4.3.3, TypeScript 5.9.3, ESLint 9.39.5, Vitest 5.0.3, supabase-js 2.117.2. LangGraph, google-genai and supabase-py are added in M2/M5 when first used.
-**Golden set size:** 68 (v1, written from seed facts) · **Latest eval score:** 91% offline (62/68, 2026-10-05, no LLM, fake embedder): fallback 100%, invented numbers 0, exact data 93%. Live score: not run yet
+**Golden set size:** 69 (v1, written from seed facts) · **Latest eval score:** 91% offline (63/69, 2026-11-27, no LLM, fake embedder): fallback 100%, invented numbers 0, exact data 93%. Live score: not run yet
 
 ## 8. Decisions Pending *(update)*
 
@@ -233,3 +233,9 @@ Template:
 - Tests: pytest 219 passed (unit + Postgres integration on embedded pgserver), ruff and mypy strict clean. Eval offline 91% (62/68), fallback 100%, invented numbers 0. Remaining misses: 2 Urdu-script and 2 Roman Urdu items (need the LLM planner), 2 synonym questions ("maths", "BSCS" vs "Computer Science") that the lexical fake embedder cannot match.
 - Next: create the dev Supabase project and run `make migrate` and `make seed` there; get a Gemini key and model IDs, record limits, run `make eval EVAL_ARGS="--live"`; collect verified faculty, timetable and KB data; replace the golden set with the 100 collected student questions.
 - Questions for the user: who reviews Urdu templates; confirm redaction scope (Section 8).
+
+### 2026-11-27 · M2 · Health check, push, office-hours fix
+- Done: full check of the current state (ruff, mypy, pytest, eval, web lint/tsc/vitest/build, API endpoints). Committed the pending M2 work as three commits (migrations 0003-0004, Groq provider, website import) and pushed `feat/M2-data-rag`. Fixed "What are the office timings?" falling back: a `get_office` miss on a generic opening-hours question now lists every office's hours from the table (`asks_office_hours`, `all_offices`).
+- Tests: pytest 248 passed (pass). Eval offline 91% (63/69), new item g069 passes. Web checks and build pass.
+- Gotcha: the embedded pgserver data dir (`apps/api/.localdb`) was not shut down cleanly; crash recovery took about 40 s, over pgserver's 10 s start timeout, so the first eval run failed with `TimeoutExpired`. Rerunning works.
+- Next: open the M2 pull request so CI runs; add DATABASE_URL, GEMINI_API_KEY and GROQ_API_KEY to `apps/api/.env` (by hand), then seed, approve pages and run the live eval; start M3.

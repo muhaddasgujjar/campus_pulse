@@ -5,7 +5,13 @@ from datetime import date
 import pytest
 
 from app.agent.language import detect_language
-from app.agent.planner import PLAN_SCHEMA, parse_plan, rule_plan, wants_explanation
+from app.agent.planner import (
+    PLAN_SCHEMA,
+    asks_office_hours,
+    parse_plan,
+    rule_plan,
+    wants_explanation,
+)
 from app.agent.state import StudentProfile
 
 TODAY = date(2026, 10, 5)  # a Monday
@@ -151,3 +157,17 @@ def test_credit_hours_live_in_the_fee_table() -> None:
 def test_can_i_still_apply_is_a_deadline_question() -> None:
     plan = rule_plan("Can I still apply for Fall 2026 admission?", None, TODAY)
     assert (plan.tool, plan.args) == ("get_key_dates", {"kind": "admission"})
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("What are the office timings?", True),
+        ("office hours?", True),
+        ("When is the office open?", True),
+        ("Where is the LGU main campus?", False),
+        ("What is the phone number of the exam office?", False),
+    ],
+)
+def test_asks_office_hours(text: str, expected: bool) -> None:
+    assert asks_office_hours(text) is expected

@@ -110,6 +110,16 @@ async def test_office_contact_comes_from_the_table(
     assert "Exam Office" in result.answer and "042-37181828" in result.answer
 
 
+async def test_office_hours_without_an_office_name_list_every_office(
+    db_session: AsyncSession, embedder: FakeEmbedder
+) -> None:
+    result = await ask(db_session, embedder, "What are the office timings?")
+    assert (result.tool_used, result.mode) == ("get_office", "template")
+    assert "Admission Office" in result.answer and "Exam Office" in result.answer
+    assert "08:00 to 16:00" in result.answer
+    assert embedder.calls == 0  # answered from the table, no retrieval
+
+
 # --- rule shortcuts: 0 LLM calls --------------------------------------------------------------
 
 
