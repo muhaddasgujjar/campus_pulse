@@ -129,3 +129,20 @@
     animation: none;
   }
 }
+
+/* Voice (DESIGN.md 5.1): pulsing recording dot, glowing active mic. */
+@layer components {
+  .recording-dot {
+    animation: typing 1.2s var(--ease-standard) infinite;
+  }
+
+  .mic-active {
+    box-shadow: var(--glow-teal);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .recording-dot {
+    animation: none;
+  }
+}

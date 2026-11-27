@@ -4,7 +4,7 @@ import { CircleAlert, SquarePen, WifiOff } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { BrandMark } from "@/components/brand/BrandMark";
-import { Composer } from "@/components/chat/Composer";
+import { Composer, type VoiceOptions } from "@/components/chat/Composer";
 import { BotMessage, UserBubble } from "@/components/chat/Messages";
 import { fetchConfig, type PublicConfig } from "@/lib/chat/api";
 import type { Connection } from "@/lib/chat/state";
@@ -71,9 +71,16 @@ function Banner({ tone, children }: { tone: "warning" | "danger"; children: Reac
 }
 
 /** The chat screen (DESIGN.md Section 3.2): header, messages, quick replies, composer. */
-export function ChatScreen({ chatOptions }: { chatOptions?: UseChatOptions }) {
+export function ChatScreen({
+  chatOptions,
+  voiceOptions,
+}: {
+  chatOptions?: UseChatOptions;
+  voiceOptions?: VoiceOptions;
+}) {
   const { state, send, retry, rate, newChat, dismissNotice } = useChat(chatOptions);
   const [config, setConfig] = useState<PublicConfig | null>(null);
+  const [editRequest, setEditRequest] = useState<{ text: string; nonce: number } | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -145,7 +152,12 @@ export function ChatScreen({ chatOptions }: { chatOptions?: UseChatOptions }) {
           <div className="flex flex-col gap-4" aria-live="polite" aria-relevant="additions">
             {messages.map((message, index) =>
               message.role === "user" ? (
-                <UserBubble key={message.localId} message={message} onRetry={retry} />
+                <UserBubble
+                  key={message.localId}
+                  message={message}
+                  onRetry={retry}
+                  onEdit={(text) => setEditRequest({ text, nonce: Date.now() })}
+                />
               ) : (
                 <BotMessage
                   key={message.localId}
@@ -177,7 +189,14 @@ export function ChatScreen({ chatOptions }: { chatOptions?: UseChatOptions }) {
         <div ref={bottom} />
       </main>
 
-      <Composer onSend={send} disabled={connection === "offline"} disclaimer={disclaimer} />
+      <Composer
+        onSend={(text) => send(text)}
+        onSendVoice={(transcript, seconds) => send(transcript, { seconds: Math.round(seconds) })}
+        disabled={connection === "offline"}
+        disclaimer={disclaimer}
+        editRequest={editRequest}
+        voice={{ apiUrl: chatOptions?.apiUrl, ...voiceOptions }}
+      />
     </div>
   );
 }

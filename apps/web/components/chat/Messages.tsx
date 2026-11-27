@@ -1,6 +1,6 @@
 "use client";
 
-import { CircleAlert, RotateCw } from "lucide-react";
+import { CircleAlert, Mic, Pencil, RotateCw } from "lucide-react";
 import { useState } from "react";
 
 import { AnswerText } from "@/components/chat/AnswerText";
@@ -10,23 +10,45 @@ import { SourceChips, VerifiedBadge } from "@/components/chat/Sources";
 import { BrandMark } from "@/components/brand/BrandMark";
 import { answerParts, formatTime, STAGE_TEXT } from "@/lib/chat/format";
 import type { ChatMessage } from "@/lib/chat/state";
+import { formatDuration } from "@/lib/voice/support";
 
 /** User bubble: right aligned, smaller bottom-right corner (DESIGN.md Section 4). */
 export function UserBubble({
   message,
   onRetry,
+  onEdit,
 }: {
   message: ChatMessage;
   onRetry: (localId: string) => void;
+  onEdit?: (text: string) => void;
 }) {
+  const voice = message.modality === "voice";
   return (
     <div className="bubble-in flex flex-col items-end gap-1">
-      <div
-        dir="auto"
-        className="max-w-[85%] rounded-(--radius-md) rounded-ee-(--radius-sm) bg-user-bubble px-4 py-2 whitespace-pre-wrap text-on-user-bubble"
-      >
-        {message.text}
+      <div className="max-w-[85%] rounded-(--radius-md) rounded-ee-(--radius-sm) bg-user-bubble px-4 py-2 text-on-user-bubble">
+        {voice && (
+          <p className="mb-1 flex items-center gap-2 text-sm font-medium">
+            <Mic size={16} strokeWidth={1.75} aria-hidden="true" />
+            <span>
+              Voice message{message.seconds !== null && ` · ${formatDuration(message.seconds)}`}
+            </span>
+          </p>
+        )}
+        <p dir="auto" className="whitespace-pre-wrap">
+          {voice && <span className="sr-only">Transcript: </span>}
+          {message.text}
+        </p>
       </div>
+      {voice && onEdit && (
+        <button
+          type="button"
+          onClick={() => onEdit(message.text)}
+          className="inline-flex min-h-8 items-center gap-1 text-xs text-accent underline"
+        >
+          <Pencil size={12} strokeWidth={1.75} aria-hidden="true" />
+          Edit and resend
+        </button>
+      )}
       <p className="flex items-center gap-2 text-xs text-muted">
         {message.status === "failed" ? (
           <>

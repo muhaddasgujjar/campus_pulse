@@ -91,7 +91,7 @@ export function useChat(options: UseChatOptions = {}) {
         type: "user_message",
         conversation_id: current.conversationId,
         text: message.text,
-        modality: "text",
+        modality: message.modality,
       });
       if (!sent) break;
       inFlight.current.add(message.localId);
@@ -176,15 +176,35 @@ export function useChat(options: UseChatOptions = {}) {
     save({ conversationId: state.conversationId, lastMessageId: state.lastMessageId });
   }, [state.conversationId, state.lastMessageId]);
 
-  const send = useCallback((text: string) => {
-    const trimmed = text.trim();
-    if (!trimmed) return;
-    dispatch({ type: "send", localId: localId("u"), text: trimmed, now: Date.now() });
-  }, []);
+  /** Send a question. Voice messages send their transcript with modality "voice" (VOI-3). */
+  const send = useCallback(
+    (text: string, voice?: { seconds: number | null }) => {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+      dispatch({
+        type: "send",
+        localId: localId("u"),
+        text: trimmed,
+        now: Date.now(),
+        modality: voice ? "voice" : "text",
+        seconds: voice?.seconds ?? null,
+      });
+    },
+    [],
+  );
 
   const retry = useCallback((failedLocalId: string) => {
     const failed = stateRef.current.messages.find((m) => m.localId === failedLocalId);
-    if (failed) dispatch({ type: "send", localId: localId("u"), text: failed.text, now: Date.now() });
+    if (failed) {
+      dispatch({
+        type: "send",
+        localId: localId("u"),
+        text: failed.text,
+        now: Date.now(),
+        modality: failed.modality,
+        seconds: failed.seconds,
+      });
+    }
   }, []);
 
   const rate = useCallback(

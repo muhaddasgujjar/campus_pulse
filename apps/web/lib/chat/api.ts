@@ -59,6 +59,8 @@ export async function fetchHistory(
       localId: `h-${row.id}`,
       id: row.id,
       role: row.role,
+      modality: row.modality,
+      seconds: null,
       text: row.content,
       sources: row.sources,
       createdAt: Date.parse(row.created_at),
