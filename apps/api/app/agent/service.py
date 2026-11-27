@@ -1,4 +1,4 @@
-"""Entry point for one chat turn: `answer_question()`. Used by eval now, by the WebSocket in M3.
+"""Entry point for one chat turn: `answer_question()`. Used by the WebSocket and the eval.
 
 The caller owns the database transaction (the agent writes unanswered_queries and usage_daily
 rows into the given session) and decides when to commit.
@@ -6,6 +6,7 @@ rows into the given session) and decides when to commit.
 
 import time
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import date
 from functools import lru_cache
@@ -21,6 +22,7 @@ from app.core.config import Settings
 from app.db.models import Institution
 from app.services.embeddings import Embedder
 from app.services.llm import LLMRouter
+from app.services.session_memory import Turn
 from app.tools.base import Source
 
 
@@ -38,6 +40,8 @@ class AgentAnswer:
     fallback_reason: str | None
     latency_ms: int
     tool_data: list[dict[str, Any]] = field(default_factory=list)
+    tokens_in: int = 0
+    tokens_out: int = 0
     office_contact: dict[str, Any] | None = None
 
     @property
@@ -79,6 +83,23 @@ async def make_deps(
     )
 
 
+Stage = Literal["searching", "reading", "writing"]
+StatusCallback = Callable[[Stage], Awaitable[None]]
+
+
+def _next_stage(node: str, update: dict[str, Any]) -> Stage | None:
+    """The status the student sees once `node` has finished (WebSocket `status` events)."""
+    if node == "plan":
+        intent = update["plan"].intent
+        if intent == "structured":
+            return "searching"
+        if intent in ("knowledge", "live"):
+            return "reading"
+    if node in ("structured", "retrieve") and update.get("tool_results"):
+        return "writing"
+    return None
+
+
 async def answer_question(
     deps: AgentDeps,
     query: str,
@@ -86,18 +107,29 @@ async def answer_question(
     modality: Literal["text", "voice"] = "text",
     profile: StudentProfile | None = None,
     conversation_id: uuid.UUID | None = None,
+    history: list[Turn] | None = None,
+    on_status: StatusCallback | None = None,
 ) -> AgentAnswer:
     started = time.perf_counter()
-    raw = await _graph().ainvoke(
+    state = cast(AgentState, {})
+    async for mode, chunk in _graph().astream(
         {
             "query": query[:2000],  # input length limit (SEC-2)
             "modality": modality,
             "profile": profile,
             "conversation_id": conversation_id,
+            "history": history or [],
         },
         context=deps,
-    )
-    state = cast(AgentState, raw)
+        stream_mode=["updates", "values"],
+    ):
+        if mode == "values":
+            state = cast(AgentState, chunk)
+        elif on_status is not None:
+            for node, update in cast(dict[str, dict[str, Any] | None], chunk).items():
+                stage = _next_stage(node, update or {})
+                if stage is not None:
+                    await on_status(stage)
     results = state.get("tool_results") or []
     plan = state.get("plan")
     return AgentAnswer(
@@ -114,4 +146,6 @@ async def answer_question(
         latency_ms=round((time.perf_counter() - started) * 1000),
         tool_data=[row for r in results for row in r.data],
         office_contact=state.get("office_contact"),
+        tokens_in=state.get("tokens_in", 0),
+        tokens_out=state.get("tokens_out", 0),
     )

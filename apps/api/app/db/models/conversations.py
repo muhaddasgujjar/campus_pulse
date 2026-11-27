@@ -1,9 +1,19 @@
 """Conversations, messages, feedback and unanswered queries (CHAT, ANS-5, DATA-7)."""
 
 import uuid
+from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Integer, SmallInteger, Text
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Integer,
+    SmallInteger,
+    Text,
+    func,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -27,6 +37,11 @@ class Message(UUIDPk, Timestamps, Base):
     __table_args__ = (
         CheckConstraint("role in ('user','assistant')", name="role"),
         CheckConstraint("modality in ('text','voice')", name="modality"),
+    )
+
+    # clock_timestamp(): a question and its answer saved in one transaction keep their order.
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.clock_timestamp(), nullable=False
     )
 
     conversation_id: Mapped[uuid.UUID] = mapped_column(

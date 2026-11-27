@@ -245,19 +245,27 @@ Authentication: the client sends the Supabase access token as the first message 
 Client to server:
 ```json
 {"type":"auth","token":"<supabase_access_token>"}
-{"type":"user_message","conversation_id":"...","text":"...","lang_hint":"en","modality":"text|voice"}
+{"type":"user_message","conversation_id":"... or null","text":"...","lang_hint":"en","modality":"text|voice"}
+{"type":"resume","conversation_id":"...","last_message_id":"..."}
 {"type":"ping"}
 ```
 Server to client:
 ```json
-{"type":"ack","message_id":"..."}
+{"type":"ack","message_id":"...","conversation_id":"..."}
 {"type":"status","stage":"waking|searching|reading|writing|queued"}
-{"type":"token","text":"..."}
-{"type":"sources","items":[{"title":"...","office":"...","url":"...","last_verified":"2026-10-02","expired":false}]}
-{"type":"final","message_id":"...","fallback":false,"cache_hit":false}
-{"type":"error","code":"rate_limited|busy|provider_down|internal","message":"..."}
+{"type":"sources","message_id":"...","items":[{"title":"...","office":"...","url":"...","last_verified":"2026-10-02","expired":false}]}
+{"type":"token","message_id":"...","text":"..."}
+{"type":"final","message_id":"...","conversation_id":"...","fallback":false,"cache_hit":false,"office":null,"replay":false}
+{"type":"error","code":"rate_limited|busy|provider_down|internal|invalid_message|unavailable","message":"...","retry_after":600}
+{"type":"pong"}
 ```
-Resume: client sends `last_message_id` on reconnect, server replays missing events (CHAT-9). On a cold start the client retries with backoff and shows the "waking up" state.
+- **Conversation ids are server generated.** The first `user_message` sends `conversation_id: null`; `ack` returns the id. An unknown id starts a new conversation.
+- **Streaming happens after the post-check (M3 decision).** The answer is checked for invented numbers before anything is sent (rules 1 and 2), so raw LLM tokens never reach the student. `status` events cover the wait, then the checked answer is sent as `token` chunks.
+- **`final.office`** carries the fallback card's office (name, phones, email, hours) when `fallback` is true.
+- **Resume (CHAT-9):** after a reconnect the client sends `resume` with the last `message_id` it received. The server replays later answers (`final.replay: true`). A turn always finishes and is stored even if the socket closes midway.
+- **Origin check:** browsers do not apply CORS to WebSockets, so the server closes connections whose `Origin` is not in `CORS_ORIGINS` (code 1008).
+- **Until M5**, `auth` is accepted and ignored: everyone chats anonymously, rate-limited by IP. Holding a conversation id is what allows reading its history, so ids are random UUIDs and never listed.
+- On a cold start the client retries with backoff and shows the "waking up" state.
 
 ### REST (prefix `/api`)
 | Area | Endpoints |

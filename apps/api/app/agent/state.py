@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings
 from app.services.embeddings import Embedder
 from app.services.llm import LLMRouter
+from app.services.session_memory import Turn
 from app.tools.base import Source, ToolResult
 
 Intent = Literal["structured", "knowledge", "live", "smalltalk", "out_of_scope"]
@@ -46,10 +47,12 @@ class AgentState(TypedDict, total=False):
     modality: Literal["text", "voice"]
     profile: StudentProfile | None
     conversation_id: uuid.UUID | None
+    history: list[Turn]  # last turns of this chat (CHAT-5), redacted questions
     # normalize
     redacted_query: str
     language: str
     cache_key: str
+    use_cache: bool  # off for follow-ups, whose meaning depends on the history
     today: date
     # plan
     plan: Plan

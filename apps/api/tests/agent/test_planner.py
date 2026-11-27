@@ -8,6 +8,7 @@ from app.agent.language import detect_language
 from app.agent.planner import (
     PLAN_SCHEMA,
     asks_office_hours,
+    is_follow_up,
     parse_plan,
     rule_plan,
     wants_explanation,
@@ -171,3 +172,22 @@ def test_can_i_still_apply_is_a_deadline_question() -> None:
 )
 def test_asks_office_hours(text: str, expected: bool) -> None:
     assert asks_office_hours(text) is expected
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("And semester 2?", True),
+        ("What about BBA?", True),
+        ("Is it open on Saturday?", True),
+        ("aur BBA ki?", True),
+        ("What are the fees for BSCS?", False),
+        ("Exam office phone number?", False),
+        (
+            "Is this the right place to ask about scholarships for students in their final year?",
+            False,
+        ),
+    ],
+)
+def test_is_follow_up(text: str, expected: bool) -> None:
+    assert is_follow_up(text) is expected

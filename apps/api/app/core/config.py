@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     # --- institution (ADP-2: institution text lives in config, not in code paths) ---
     institution_slug: str = "lgu"
     institution_disclaimer: str = DEFAULT_DISCLAIMER
+    # "Today" for date answers (rule 3) is the institution's local date, not the server's UTC
+    # date. Pakistan is UTC+5 with no daylight saving time.
+    institution_utc_offset_hours: float = Field(default=5, ge=-12, le=14)
 
     # --- database (Supabase Postgres via the pooler) ---
     database_url: str | None = None  # transaction pooler, used by the app

@@ -25,6 +25,7 @@ from app.agent.language import detect_language
 from app.agent.planner import (
     PLAN_SCHEMA,
     asks_office_hours,
+    is_follow_up,
     parse_plan,
     rule_plan,
     wants_explanation,
@@ -101,9 +102,11 @@ async def normalize(state: AgentState, runtime: Runtime[AgentDeps]) -> dict[str,
     redacted = redact(query)  # before anything is stored or sent to the LLM (SEC-3, SEC-5)
     language = detect_language(query)
     profile = state.get("profile")
+    use_cache = deps.cache is not None and not (state.get("history") and is_follow_up(query))
     # Read the content version only when there is a cache to key (one indexed query).
-    version = await data_version(deps.session, deps.institution_id) if deps.cache else "0"
+    version = await data_version(deps.session, deps.institution_id) if use_cache else "0"
     return {
+        "use_cache": use_cache,
         "redacted_query": redacted,
         "language": language,
         "today": deps.today,
@@ -127,7 +130,7 @@ async def normalize(state: AgentState, runtime: Runtime[AgentDeps]) -> dict[str,
 
 async def cache_lookup(state: AgentState, runtime: Runtime[AgentDeps]) -> dict[str, Any]:
     deps = runtime.context
-    if deps.cache is None:
+    if deps.cache is None or not state.get("use_cache"):
         return {}
     hit = await deps.cache.get(state["cache_key"])
     if hit is None:
@@ -147,7 +150,7 @@ async def plan(state: AgentState, runtime: Runtime[AgentDeps]) -> dict[str, Any]
     result, counters, error = await _llm(
         state,
         deps,
-        planner_prompt(query, profile, deps.today),
+        planner_prompt(query, profile, deps.today, state.get("history")),
         "fast",
         system=PLANNER_SYSTEM,
         json_schema=PLAN_SCHEMA,
@@ -324,7 +327,12 @@ async def finalize(state: AgentState, runtime: Runtime[AgentDeps]) -> dict[str, 
         fallbacks=1 if is_fallback else 0,
     )
     cacheable = state["answer_mode"] in ("template", "llm", "extractive")
-    if deps.cache is not None and cacheable and not state.get("cache_hit"):
+    if (
+        deps.cache is not None
+        and state.get("use_cache")
+        and cacheable
+        and not state.get("cache_hit")
+    ):
         await deps.cache.set(
             state["cache_key"],
             CachedAnswer(
