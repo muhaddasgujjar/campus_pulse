@@ -59,7 +59,15 @@ async def test_public_config_returns_institution_text(client: httpx.AsyncClient)
     body = response.json()
     assert body["institution_slug"] == "lgu"
     assert body["disclaimer"].startswith("Answers are based on information verified")
-    assert set(body) == {"institution_slug", "disclaimer"}  # never leaks other settings
+    # never leaks other settings; without a database there are no starter questions
+    assert set(body) == {
+        "institution_slug",
+        "institution_name",
+        "short_name",
+        "disclaimer",
+        "starter_questions",
+    }
+    assert body["starter_questions"] == []
 
 
 async def test_cors_allows_configured_origin(client: httpx.AsyncClient) -> None:

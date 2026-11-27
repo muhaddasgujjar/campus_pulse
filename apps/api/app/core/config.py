@@ -104,6 +104,14 @@ class Settings(BaseSettings):
     internal_jobs_secret: SecretStr | None = None
     chat_retention_days: int = Field(default=60, gt=0)
 
+    @field_validator("institution_disclaimer", mode="before")
+    @classmethod
+    def _default_disclaimer(cls, value: object) -> object:
+        """`INSTITUTION_DISCLAIMER=` (empty, as in .env.example) keeps the default (CHAT-8)."""
+        if value is None or (isinstance(value, str) and not value.strip()):
+            return DEFAULT_DISCLAIMER
+        return value
+
     @field_validator("cors_origins", "llm_providers", mode="before")
     @classmethod
     def _parse_csv(cls, value: object) -> object:

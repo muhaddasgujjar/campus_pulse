@@ -74,3 +74,11 @@ def test_llm_budget_cannot_exceed_two_calls(monkeypatch: pytest.MonkeyPatch) -> 
 def test_invalid_app_env_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
     with pytest.raises(ValidationError):
         load(monkeypatch, APP_ENV="staging-typo")
+
+
+def test_empty_disclaimer_keeps_the_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    """.env.example ships `INSTITUTION_DISCLAIMER=`: the footer must not go blank (CHAT-8)."""
+    settings = load(monkeypatch, INSTITUTION_DISCLAIMER="")
+    assert settings.institution_disclaimer.startswith("Answers are based on information verified")
+    custom = load(monkeypatch, INSTITUTION_DISCLAIMER="Confirm with your office.")
+    assert custom.institution_disclaimer == "Confirm with your office."
