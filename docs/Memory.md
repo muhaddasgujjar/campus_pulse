@@ -120,9 +120,9 @@ Milestones follow the proposal (M1 to M7). Tick items when done and add the date
 - [ ] **M6 Deployment and Hardening** (W15-16)
 - [ ] **M7 Testing and Final Delivery** (W17)
 
-**Current milestone:** M2 (M1 code done; M1 accounts, limits and the 100 questions still open)
-**Current focus:** M2 code complete and pushed on branch `feat/M2-data-rag` (2026-11-27, no PR yet): schema, seeds, tools, ingestion, retrieval, agent, CLI, eval. Next: run the migration and seed on the dev Supabase project, run `make eval EVAL_ARGS="--live"` with a Gemini key, get faculty and timetable data from the offices.
-**Blocked on:** `DATABASE_URL` for `campus-pulse-dev` in `apps/api/.env` (to seed and import), a Groq key (live eval) and a Gemini key (embeddings). Staff review of the imported pages. Verified faculty and timetable data from the offices.
+**Current milestone:** M3 (code complete 2026-11-27 on branch `feat/M3-chat`, stacked on `feat/M2-data-rag`; M1 and M2 live items still open)
+**Current focus:** M3 chat MVP built and tested locally (`make api-local` + `make web-dev`). Next: push the branch and open the M3 PR, run the chat against the dev Supabase project and a real Upstash Redis, measure first-token latency with Groq, then M4.
+**Blocked on:** `DATABASE_URL` for `campus-pulse-dev` and `REDIS_URL` (Upstash) in `apps/api/.env`, a Groq key (live eval, latency) and a Gemini key (embeddings). Staff review of the imported pages. Verified faculty and timetable data. The 100 collected student questions (golden set to 100 items).
 
 **M1 scaffold checklist** (see `Phases.md` M1 for the full task list)
 - [x] Repo layout per `Architectural.md` Section 4, `CLAUDE.md`, README, Makefile, pre-commit, `.claude/` commands (2026-10-05)
@@ -145,6 +145,15 @@ Milestones follow the proposal (M1 to M7). Tick items when done and add the date
 - [ ] Seed and load the web snapshot into Supabase, approve pages, embed (needs DATABASE_URL in `.env` and a Gemini key)
 - [ ] Live eval with Groq (needs GROQ_API_KEY)
 
+**M3 checklist** (see `Phases.md` M3)
+- [x] Redis layer with in-process fallbacks: rate limit, session memory, response cache, daily quota counters; `data_version` = newest audit_log row; migration 0005 (2026-11-27, fakeredis only)
+- [x] `/ws/chat` gateway: ack, status, sources, token, final, error, pong; resume; origin check; follow-ups planned with the last 6 turns; migration 0006 (2026-11-27)
+- [x] REST: conversation history, feedback, starter questions in `/api/config` (2026-11-27)
+- [x] Chat UI per DESIGN.md with reconnect, waking-up state and accessibility (2026-11-27)
+- [x] `make api-local` (no cloud) and Playwright smoke tests on desktop and phone, in CI (2026-11-27)
+- [ ] Run against dev Supabase and real Upstash; p95 first token under 4 s with Groq; test a sleeping Render service (M6)
+- [ ] Golden set to 100 items (needs the collected questions)
+
 **Free limits (record from each dashboard, with the date read)**
 | Service | Limit as shown in the dashboard | Date read |
 |---|---|---|
@@ -160,8 +169,8 @@ Milestones follow the proposal (M1 to M7). Tick items when done and add the date
 **Gemini model IDs chosen:** fast = (fill in) · main = (fill in)
 **Groq model IDs (defaults in `.env.example`):** fast = `openai/gpt-oss-20b` · main = `openai/gpt-oss-120b` · reasoning effort `low`
 
-**Pinned tool versions (2026-10-05, from PyPI and npm):** Python 3.12, uv 0.12.23, FastAPI 0.142.2, Pydantic 2.13.5, pydantic-settings 2.15.0, SQLAlchemy 2.1.3, Alembic 1.20.0, asyncpg 0.31.0, structlog 26.1.0, redis-py 8.1.0, pytest 9.1.1, ruff 0.16.10, mypy 2.4.0 · Node 24 LTS, npm (switched from pnpm 11: its downloads hung on this network), Next.js 16.3.8, React 19.2.8 (what create-next-app 16.3.8 selects), Tailwind 4.3.3, TypeScript 5.9.3, ESLint 9.39.5, Vitest 5.0.3, supabase-js 2.117.2. LangGraph, google-genai and supabase-py are added in M2/M5 when first used.
-**Golden set size:** 69 (v1, written from seed facts) · **Latest eval score:** 91% offline (63/69, 2026-11-27, no LLM, fake embedder): fallback 100%, invented numbers 0, exact data 93%. Live score: not run yet
+**Pinned tool versions (2026-10-05, from PyPI and npm):** Python 3.12, uv 0.12.23, FastAPI 0.142.2, Pydantic 2.13.5, pydantic-settings 2.15.0, SQLAlchemy 2.1.3, Alembic 1.20.0, asyncpg 0.31.0, structlog 26.1.0, redis-py 8.1.0, pytest 9.1.1, ruff 0.16.10, mypy 2.4.0 · Node 24 LTS, npm (switched from pnpm 11: its downloads hung on this network), Next.js 16.3.8, React 19.2.8 (what create-next-app 16.3.8 selects), Tailwind 4.3.3, TypeScript 5.9.3, ESLint 9.39.5, Vitest 5.0.3, supabase-js 2.117.2. LangGraph, google-genai and supabase-py are added in M2/M5 when first used. **M3 (2026-11-27):** fakeredis 2.41.0 (dev only, tests), lucide-react 1.82.0 (icons, DESIGN.md 2.4), @playwright/test 1.65.1 (dev only, e2e; Chromium headless shell). All open source with no usage limits or accounts.
+**Golden set size:** 69 (v1, written from seed facts) · **Latest eval score:** 91% offline (63/69, 2026-11-27, re-run after M3, no LLM, fake embedder): fallback 100%, invented numbers 0, exact data 93%. Live score: not run yet
 
 ## 8. Decisions Pending *(update)*
 
@@ -178,6 +187,10 @@ Milestones follow the proposal (M1 to M7). Tick items when done and add the date
 | Install Docker Desktop and GNU make on dev machines (needed for `make up` and the image size check) | Team | W1 |
 | OpenAI as a provider: needs a paid key, against D14 and rule 11. Revisit only with budget approval | Team and supervisor | Before M6 |
 | Supabase prod: create a second org (free) or pause `maiku`? | Team | M6 |
+| **M3 decision to confirm:** answers stream only after the post-check (status events cover the wait), so an LLM answer with an invented number is never shown. Architectural.md Section 8 used to say "stream as soon as compose starts". Confirm, and check first-token latency with Groq | Team | M3 review |
+| **M3 decision to confirm:** until M5 auth, holding the conversation id (random UUID in localStorage) is what allows reading a chat's history; the WebSocket `auth` message is accepted and ignored | Team and supervisor | M5 |
+| Feedback reasons are stored as text at the start of `feedback.comment` (no `reason` column). Add a column if the M5 dashboard needs to count them | Team | M5 |
+| `apps/web/AGENTS.md` and `apps/web/CLAUDE.md` are generated by `next dev` (they point coding agents at the bundled Next.js docs). Commit them, or add them to .gitignore? | Team | M3 PR |
 | ESLint 9.39.5 is marked unsupported upstream, but eslint-plugin-react/import/jsx-a11y (used by eslint-config-next 16.3.8) only support ESLint up to 9. Upgrade to ESLint 10 when Next's config does | Team | Re-check each milestone |
 
 ## 9. Known Gotchas
@@ -196,6 +209,9 @@ Milestones follow the proposal (M1 to M7). Tick items when done and add the date
 - Groq: no embeddings API; structured outputs (`json_schema`) cannot stream; the 8K tokens-per-minute free limit is the real ceiling (about 3 to 4 turns a minute with planner + composer). Keep `GROQ_REASONING_EFFORT=low`.
 - The LGU site is WordPress: the page content is inside `<main id="main">` and fee tables are real HTML tables. The sitemap is `/wp-sitemap.xml`.
 - Supabase's built-in email sender is for testing only. Avoid flows that need email (staff accounts are admin-created, students are anonymous).
+- The embedded dev database (`apps/api/.localdb`) can take longer than pgserver's 10 s start timeout after an unclean shutdown (crash recovery); the first command fails with `TimeoutExpired`, the next one works.
+- Only one `next dev` per app folder: stop `make web-dev` before `make e2e` (it starts its own web server on :3001). On Windows, stopping the npm wrapper can leave the Next.js child running; `taskkill /PID <pid> /T /F`.
+- Seeding and querying must use the same embedder. `make api-local` uses `EMBEDDING_MODEL=fake` unless Gemini is configured; after switching, run `uv run python -m app.cli reindex`.
 - Voice APIs in the browser differ by device. Urdu voices and speech recognition quality vary, so test on real devices.
 
 ## 10. Session Log *(update, append only, newest at the bottom)*
@@ -239,3 +255,11 @@ Template:
 - Tests: pytest 248 passed (pass). Eval offline 91% (63/69), new item g069 passes. Web checks and build pass.
 - Gotcha: the embedded pgserver data dir (`apps/api/.localdb`) was not shut down cleanly; crash recovery took about 40 s, over pgserver's 10 s start timeout, so the first eval run failed with `TimeoutExpired`. Rerunning works.
 - Next: open the M2 pull request so CI runs; add DATABASE_URL, GEMINI_API_KEY and GROQ_API_KEY to `apps/api/.env` (by hand), then seed, approve pages and run the live eval; start M3.
+
+### 2026-11-27 · M3 · Real-time chat MVP
+- Done: M2 committed, pushed and opened as PR #2 (stacked on PR #1). Branch `feat/M3-chat` (6 commits): Redis rate limit, session memory, response cache and daily quota counters with in-process fallbacks; `data_version` from the newest audit_log row (migration 0005); `/ws/chat` with status events from the LangGraph run, resume, origin check, redacted storage, follow-ups planned with the last 6 turns (never cached), institution-local "today" (UTC+5); messages ordered with clock_timestamp() (migration 0006); history, feedback and starter-question endpoints; `make api-local`; the chat UI (bubbles, status, badge, source sheet, passed-date rows, fallback card, quick replies, feedback sheet, reconnect, waking-up state); Playwright on desktop and phone, plus a CI e2e job.
+- Decisions: stream the answer after the post-check (see Section 8); conversation id as the key to its history until M5; server-generated conversation ids; a second question waits for the first ack; feedback reason stored in the comment text.
+- Fixes found on the way: an empty `INSTITUTION_DISCLAIMER` (as in .env.example) blanked the footer; nothing invalidated the shared cache after CLI edits (`bump_version` was never called); a question and its answer in one transaction had the same timestamp; starter chips were clipped on phones.
+- Tests: pytest 299 passed, ruff and mypy strict clean; vitest 33 passed, eslint and tsc clean; Playwright 8 passed (4 desktop, 4 phone); offline eval 91% (63/69). Screenshots reviewed in light and dark mode on a phone viewport.
+- Next: push `feat/M3-chat` and open the PR; with keys in `.env`, run the chat on dev Supabase and Upstash, measure first-token latency with Groq, run the live eval; collect the 100 questions; start M4.
+- Questions for the user: see Section 8 (streaming after the post-check, history access until M5, the generated AGENTS.md/CLAUDE.md files).

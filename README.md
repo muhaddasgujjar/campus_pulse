@@ -4,7 +4,7 @@ A WhatsApp-style chat, with voice messages and a live voice mode, that answers L
 
 Final year project, LGU Department of Computer Science. Docs: [`docs/`](docs/) (start with [`docs/Memory.md`](docs/Memory.md)).
 
-> **Status:** milestone M2 (data and RAG core): schema, seed import, structured tools, ingestion, hybrid retrieval, the LangGraph agent, a minimal admin CLI and the golden-set evaluation. The chat UI, voice and admin portal come in M3 to M5. See [`docs/Phases.md`](docs/Phases.md).
+> **Status:** milestone M3 (real-time chat MVP): the WhatsApp-style chat over a WebSocket, with sources, verified badges, feedback, fallback cards, reconnect and resume, on top of the M2 data and RAG core (schema, structured tools, hybrid retrieval, the LangGraph agent, a minimal admin CLI and the golden-set evaluation). Voice and the admin portal come in M4 and M5. See [`docs/Phases.md`](docs/Phases.md).
 
 ## Free stack (Rs 0 per month, no credit card)
 
@@ -47,7 +47,8 @@ Steps:
 2. Copy the env templates. Fill them in only after you create the free accounts. Everything runs without them.
    - `cp apps/api/.env.example apps/api/.env`
    - `cp apps/web/.env.example apps/web/.env.local`
-3. Run without Docker: `make api-dev` (http://localhost:8000/healthz) and `make web-dev` (http://localhost:3000).
+3. Try the chat with no cloud accounts: `make api-local` (API on :8000 with an embedded Postgres, migrated and seeded from `seed/lgu`, templates instead of an LLM) and, in a second terminal, `make web-dev`. Open http://localhost:3000/chat. Only one `next dev` can run per app folder.
+   With a dev Supabase project in `apps/api/.env`, use `make api-dev` instead.
 4. Or run with Docker: `make up` (add `PROFILES=local-redis` for a local Redis), `make logs`, `make down`.
 5. Run the checks with `make lint typecheck test`.
 
@@ -61,6 +62,8 @@ Tests need no cloud services. Database tests run only when `DATABASE_URL` is set
 | `make install` | `uv sync` (api) and `npm ci` (web) |
 | `make up` / `down` / `logs` | Docker Compose: api, web, optional `redis` (profile `local-redis`) |
 | `make api-dev` / `web-dev` | Dev servers with reload |
+| `make api-local` | API with no cloud: embedded Postgres, migrated and seeded (dev only) |
+| `make e2e` | Playwright chat smoke tests (desktop and phone); starts its own API on :8001 and web on :3001. Without a `uv` command on PATH: `UV="python -m uv" make e2e` |
 | `make lint` / `fmt` / `typecheck` | ruff + eslint / auto-fix / mypy + tsc |
 | `make test` | pytest + vitest |
 | `make build-web` / `docker-api` | Next.js production build / API image with its size |
@@ -103,7 +106,8 @@ Templates: [`apps/api/.env.example`](apps/api/.env.example) and [`apps/web/.env.
 | `LOG_LEVEL` | api | no | Log level |
 | `CORS_ORIGINS` | api | no | Allowed web origins, comma-separated |
 | `INSTITUTION_SLUG` | api | no | `lgu` |
-| `INSTITUTION_DISCLAIMER` | api | no | Optional override of the chat disclaimer |
+| `INSTITUTION_DISCLAIMER` | api | no | Optional override of the chat disclaimer (empty = default) |
+| `INSTITUTION_UTC_OFFSET_HOURS` | api | no | The institution's UTC offset for "today" in date answers (Pakistan: 5) |
 | `DATABASE_URL` | api | **yes** | Supabase transaction pooler URL (app) |
 | `DATABASE_URL_MIGRATIONS` | api | **yes** | Supabase session pooler URL (Alembic) |
 | `SUPABASE_URL` | api | no | Supabase project URL |
@@ -120,23 +124,31 @@ Templates: [`apps/api/.env.example`](apps/api/.env.example) and [`apps/web/.env.
 | `GROQ_MODEL_FAST` / `GROQ_MODEL_MAIN` / `GROQ_REASONING_EFFORT` | api | no | Groq model IDs and gpt-oss reasoning effort |
 | `GEMINI_RPM_LIMIT` / `GEMINI_RPD_LIMIT` / `GROQ_RPM_LIMIT` / `GROQ_RPD_LIMIT` | api | no | Per-provider quota guard, copied from each dashboard (empty = none) |
 | `QUOTA_MAX_WAIT_SECONDS` | api | no | Wait near the per-minute limit before the busy fallback |
-| `RESPONSE_CACHE_TTL_SECONDS` | api | no | Response cache lifetime, 0 = off |
+| `RESPONSE_CACHE_TTL_SECONDS` | api | no | Response cache lifetime, 0 = off (Redis when `REDIS_URL` is set) |
+| `CHAT_RATE_LIMIT_MESSAGES` / `CHAT_RATE_LIMIT_WINDOW_SECONDS` | api | no | Anonymous rate limit per IP, default 20 per 600 s (CHAT-7) |
+| `SESSION_MEMORY_TURNS` / `SESSION_MEMORY_TTL_SECONDS` | api | no | Session memory, default last 6 turns for 24 h (CHAT-5) |
+| `CHAT_MAX_MESSAGE_CHARS` | api | no | Longest accepted chat message, default 1000 |
 | `RETRIEVAL_*` | api | no | Retrieval and grading thresholds, tuned with `make eval` |
 | `INTERNAL_JOBS_SECRET` | api | **yes** | Header secret for `/internal/jobs/daily` |
 | `CHAT_RETENTION_DAYS` | api | no | Message retention, default 60 |
 | `NEXT_PUBLIC_API_URL` | web | no | API base URL |
-| `NEXT_PUBLIC_WS_URL` | web | no | WebSocket base URL (M3) |
+| `NEXT_PUBLIC_WS_URL` | web | no | WebSocket base URL, e.g. `ws://localhost:8000` |
 | `NEXT_PUBLIC_SUPABASE_URL` | web | no | Supabase project URL (Auth only) |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | web | no | Public anon key (safe because RLS denies everything) |
 
-## API endpoints (M1)
+## API endpoints
 
 | Endpoint | Purpose |
 |---|---|
 | `GET /healthz` | Liveness, instant, no DB or Redis (Render health check, wake ping) |
 | `GET /readyz` | Checks DB and Redis when configured, otherwise `not_configured` |
 | `GET /metrics` | Basic Prometheus-format counters |
-| `GET /api/config` | Institution slug and disclaimer |
+| `GET /api/config` | Institution name, disclaimer and starter questions |
+| `WS /ws/chat` | Chat: `user_message`, `resume`, `ping` in; `ack`, `status`, `sources`, `token`, `final`, `error`, `pong` out. Protocol: [`docs/Architectural.md`](docs/Architectural.md) Section 8 |
+| `GET /api/conversations/{id}/messages` | Latest 100 messages of a conversation (reload, CHAT-9) |
+| `POST /api/feedback` | Thumbs up or down on an answer, with an optional reason and comment (CHAT-4) |
+
+Until M5 everyone chats anonymously, rate-limited by IP; the WebSocket only accepts origins in `CORS_ORIGINS`. Without `REDIS_URL` the rate limit, session memory and response cache run in process.
 
 ## Deployment (later)
 
