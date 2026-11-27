@@ -142,6 +142,7 @@ def report(outcomes: list[Outcome], live: bool) -> tuple[list[tuple[str, str, st
     invented = sum(1 for o in outcomes if o.invented)
     latency = _p95([o.answer.latency_ms for o in outcomes])
     latency_note = "" if live else " (no LLM)"
+    voice = [o for o in outcomes if o.item.modality == "voice"]
     rows = [
         ("Correct answers on golden set", ">= 85%", _pct(correct, total)),
         ("Correct fallback on questions with no data", ">= 90%",
@@ -153,7 +154,10 @@ def report(outcomes: list[Outcome], live: bool) -> tuple[list[tuple[str, str, st
         ("Exact-data answers matching tables", "100%",
          _pct(sum(o.correct for o in exact), len(exact))),
         ("Agent latency p95 (in process)", "< 4 s", f"{latency} ms{latency_note}"),
-        ("Voice message round trip p95 (server awake)", "< 8 s", "n/a until M4"),
+        ("Voice items answered correctly (transcript-style)", ">= 85%",
+         _pct(sum(o.correct for o in voice), len(voice))),
+        ("Voice message round trip p95 (server awake)", "< 8 s",
+         "browser only: measure on devices (M4 test sheet)"),
     ]  # fmt: skip
     return rows, (correct / total if total else 0.0)
 
