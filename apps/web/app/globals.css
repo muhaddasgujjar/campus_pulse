@@ -146,3 +146,93 @@
     animation: none;
   }
 }
+
+/* Live mode (DESIGN.md 5.2): rings pulse with the voice level; thinking rotates the dot. */
+@layer components {
+  .live-rings {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 240px;
+    height: 240px;
+  }
+
+  .live-ring {
+    position: absolute;
+    border: 2px solid var(--border-teal);
+    border-radius: var(--radius-pill);
+    transition: transform var(--duration-fast) var(--ease-standard);
+  }
+
+  .live-ring:nth-child(1) {
+    width: 140px;
+    height: 140px;
+  }
+
+  .live-ring:nth-child(2) {
+    width: 190px;
+    height: 190px;
+    opacity: 0.7;
+  }
+
+  .live-ring:nth-child(3) {
+    width: 240px;
+    height: 240px;
+    opacity: 0.4;
+  }
+
+  .live-listening .live-ring {
+    border-color: var(--accent);
+    transform: scale(var(--live-scale, 1));
+  }
+
+  .live-speaking .live-ring {
+    border-color: var(--accent);
+    animation: ring-pulse var(--duration-slow) var(--ease-standard) infinite alternate;
+  }
+
+  .live-dot {
+    position: absolute;
+    inset: 0;
+    animation: none;
+  }
+
+  .live-dot::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 50%;
+    width: 10px;
+    height: 10px;
+    margin-left: -5px;
+    border-radius: var(--radius-pill);
+    background-color: var(--accent);
+  }
+
+  .live-thinking .live-dot {
+    animation: orbit 2.4s linear infinite;
+  }
+}
+
+@keyframes ring-pulse {
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(1.08);
+  }
+}
+
+@keyframes orbit {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-ring,
+  .live-dot {
+    animation: none !important;
+    transition: none;
+  }
+}

@@ -1,15 +1,21 @@
 "use client";
 
-import { CircleAlert, SquarePen, WifiOff } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { CircleAlert, Headphones, SquarePen, WifiOff } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { BrandMark } from "@/components/brand/BrandMark";
 import { Composer, type VoiceOptions } from "@/components/chat/Composer";
 import { BotMessage, UserBubble } from "@/components/chat/Messages";
+import { LiveOverlay } from "@/components/live/LiveOverlay";
 import { fetchConfig, type PublicConfig } from "@/lib/chat/api";
 import type { Connection } from "@/lib/chat/state";
 import { type UseChatOptions, useChat } from "@/lib/chat/useChat";
 import { institution } from "@/lib/institution";
+import type { LiveDeps } from "@/lib/voice/live";
+import { canSpeak, recognitionCtor } from "@/lib/voice/support";
+
+const noSubscribe = () => () => undefined;
+const liveSupported = () => recognitionCtor() !== null && canSpeak();
 
 const CONNECTION_LABEL: Record<Connection, string> = {
   connecting: "Connecting…",
@@ -74,13 +80,20 @@ function Banner({ tone, children }: { tone: "warning" | "danger"; children: Reac
 export function ChatScreen({
   chatOptions,
   voiceOptions,
+  liveOptions,
 }: {
   chatOptions?: UseChatOptions;
   voiceOptions?: VoiceOptions;
+  /** Overrides browser detection and APIs for live mode (tests). */
+  liveOptions?: { enabled?: boolean; deps?: LiveDeps };
 }) {
   const { state, send, retry, rate, newChat, dismissNotice } = useChat(chatOptions);
   const [config, setConfig] = useState<PublicConfig | null>(null);
   const [editRequest, setEditRequest] = useState<{ text: string; nonce: number } | null>(null);
+  const [liveOpen, setLiveOpen] = useState(false);
+  const [liveNote, setLiveNote] = useState<string | null>(null);
+  const detectedLive = useSyncExternalStore(noSubscribe, liveSupported, () => false);
+  const canGoLive = liveOptions?.enabled ?? detectedLive;
   const bottom = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -118,6 +131,19 @@ export function ChatScreen({
           <span aria-hidden="true" className={`size-2 rounded-(--radius-pill) ${DOT[connection]}`} />
           {CONNECTION_LABEL[connection]}
         </span>
+        <button
+          type="button"
+          onClick={() => {
+            setLiveNote(null);
+            setLiveOpen(true);
+          }}
+          disabled={!canGoLive || connection === "offline"}
+          aria-label="Live mode"
+          title={canGoLive ? "Talk hands-free" : "Live mode works in Chrome and Edge"}
+          className="inline-flex size-11 items-center justify-center rounded-(--radius-pill) text-muted hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <Headphones size={20} strokeWidth={1.75} aria-hidden="true" />
+        </button>
         {messages.length > 0 && (
           <button
             type="button"
@@ -130,6 +156,26 @@ export function ChatScreen({
         )}
       </header>
 
+      {liveNote && (
+        <Banner tone="warning">
+          <span className="flex-1">{liveNote}</span>
+          <button type="button" onClick={() => setLiveNote(null)} className="text-accent underline">
+            Dismiss
+          </button>
+        </Banner>
+      )}
+      {liveOpen && (
+        <LiveOverlay
+          messages={messages}
+          notice={notice}
+          onAsk={(text) => send(text, { seconds: null })}
+          onClose={(note) => {
+            setLiveOpen(false);
+            if (note) setLiveNote(note);
+          }}
+          deps={liveOptions?.deps}
+        />
+      )}
       {connection === "waking" && (
         <Banner tone="warning">Waking up the assistant. This can take up to a minute the first time.</Banner>
       )}
