@@ -43,12 +43,10 @@ async def test_all_tables_exist(db_engine: AsyncEngine) -> None:
 
 
 async def test_rls_enabled_with_no_policies_on_every_table(db_engine: AsyncEngine) -> None:
+    """Including alembic_version: Supabase exposes every public table to the Data API (D16)."""
     async with db_engine.connect() as conn:
         no_rls = await conn.execute(
-            text(
-                "select tablename from pg_tables where schemaname = 'public' "
-                "and tablename <> 'alembic_version' and not rowsecurity"
-            )
+            text("select tablename from pg_tables where schemaname = 'public' and not rowsecurity")
         )
         policies = await conn.execute(
             text("select count(*) from pg_policies where schemaname = 'public'")
@@ -96,3 +94,19 @@ async def test_models_match_migrations(db_engine: AsyncEngine) -> None:
     async with db_engine.connect() as conn:
         diff = await conn.run_sync(_diff)
     assert diff == []
+
+
+async def test_hybrid_search_has_a_fixed_search_path_and_no_public_execute(
+    db_engine: AsyncEngine,
+) -> None:
+    async with db_engine.connect() as conn:
+        row = (
+            await conn.execute(
+                text(
+                    "select p.proconfig, has_function_privilege('public', p.oid, 'execute') "
+                    "from pg_proc p where p.proname = 'hybrid_search'"
+                )
+            )
+        ).one()
+    assert row[0] == ["search_path=public"]
+    assert row[1] is False
