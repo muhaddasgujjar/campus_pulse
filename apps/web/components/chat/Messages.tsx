@@ -5,6 +5,7 @@ import { useState } from "react";
 
 import { AnswerText } from "@/components/chat/AnswerText";
 import { FallbackCard } from "@/components/chat/FallbackCard";
+import { ListenButton } from "@/components/chat/ListenButton";
 import { Feedback, type RateFn } from "@/components/chat/Feedback";
 import { SourceChips, VerifiedBadge } from "@/components/chat/Sources";
 import { BrandMark } from "@/components/brand/BrandMark";
@@ -143,6 +144,9 @@ export function BotMessage({
               onSheetOpenChange={setFeedbackOpen}
               defaultReason={message.fallback ? "not_helpful" : undefined}
             />
+            {!message.fallback && (
+              <ListenButton text={message.text} hasSources={message.sources.length > 0} />
+            )}
           </div>
         )}
       </div>
