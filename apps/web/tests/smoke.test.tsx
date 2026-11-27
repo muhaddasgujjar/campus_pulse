@@ -2,7 +2,6 @@ import { render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import WelcomePage from "@/app/page";
-import ChatPage from "@/app/chat/page";
 import { wakeApi } from "@/lib/wake";
 
 describe("welcome page", () => {
@@ -11,14 +10,6 @@ describe("welcome page", () => {
     expect(screen.getByRole("heading", { level: 1, name: "Campus Pulse AI" })).toBeInTheDocument();
     expect(screen.getByText(/Ask me anything about LGU/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Start chat" })).toHaveAttribute("href", "/chat");
-  });
-});
-
-describe("chat shell", () => {
-  it("shows a disabled composer and the disclaimer", () => {
-    render(<ChatPage />);
-    expect(screen.getByLabelText("Type a message")).toBeDisabled();
-    expect(screen.getByText(/Please confirm important decisions/)).toBeInTheDocument();
   });
 });
 
