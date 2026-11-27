@@ -1,10 +1,11 @@
 """Provider chain (COST-5): try each configured provider in LLM_PROVIDERS order.
 
 "template" in the chain means "no more LLMs": the router raises and the agent renders a
-template answer (structured data) or the fallback. Every call passes the quota guard.
+template answer (structured data) or the fallback. Each provider has its own quota guard, so
+when Groq's free quota runs out the next provider (Gemini) is tried.
 """
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from typing import Any
 
 from app.core.config import Settings
@@ -23,13 +24,20 @@ log = get_logger("llm")
 class LLMRouter:
     name = "router"
 
-    def __init__(self, providers: list[LLMProvider], quota: QuotaGuard | None = None) -> None:
+    def __init__(
+        self, providers: list[LLMProvider], quotas: Mapping[str, QuotaGuard] | None = None
+    ) -> None:
         self.providers = providers
-        self.quota = quota
+        self.quotas = dict(quotas or {})
 
     @property
     def available(self) -> bool:
         return bool(self.providers)
+
+    async def _acquire(self, provider: LLMProvider) -> None:
+        guard = self.quotas.get(provider.name)
+        if guard is not None:
+            await guard.acquire()  # raises LLMQuotaError
 
     async def generate(
         self,
@@ -40,9 +48,8 @@ class LLMRouter:
     ) -> LLMResult:
         last: LLMProviderError | None = None
         for provider in self.providers:
-            if self.quota is not None:
-                await self.quota.acquire()  # raises LLMQuotaError: no point trying others
             try:
+                await self._acquire(provider)
                 return await provider.generate(prompt, model_tier, json_schema, system)
             except LLMProviderError as exc:
                 log.warning("llm_provider_failed", provider=provider.name, error=str(exc))
@@ -52,17 +59,25 @@ class LLMRouter:
     async def stream(
         self, prompt: str, model_tier: ModelTier, system: str | None = None
     ) -> AsyncIterator[str]:
-        if not self.providers:
-            raise LLMProviderError("no LLM provider configured")
-        if self.quota is not None:
-            await self.quota.acquire()
-        async for token in self.providers[0].stream(prompt, model_tier, system):
-            yield token
+        """Streams from the first provider with quota left (no switching mid-answer)."""
+        last: LLMProviderError | None = None
+        for provider in self.providers:
+            try:
+                await self._acquire(provider)
+            except LLMProviderError as exc:
+                last = exc
+                continue
+            async for token in provider.stream(prompt, model_tier, system):
+                yield token
+            return
+        raise last or LLMProviderError("no LLM provider configured")
 
 
 def build_llm(settings: Settings) -> LLMRouter:
     """Build the chain from LLM_PROVIDERS. Unconfigured providers are skipped with a warning."""
     providers: list[LLMProvider] = []
+    quotas: dict[str, QuotaGuard] = {}
+    wait = settings.quota_max_wait_seconds
     for name in settings.llm_providers:
         if name == "template":
             break
@@ -82,15 +97,35 @@ def build_llm(settings: Settings) -> LLMRouter:
                         timeout_seconds=settings.llm_timeout_seconds,
                     )
                 )
+                quotas["gemini"] = QuotaGuard(
+                    settings.gemini_rpm_limit, settings.gemini_rpd_limit, wait
+                )
             else:
                 log.warning(
                     "llm_provider_skipped",
                     provider="gemini",
                     reason="GEMINI_API_KEY, LLM_MODEL_FAST or LLM_MODEL_MAIN missing",
                 )
+        elif name == "groq":
+            if settings.groq_api_key and settings.groq_model_fast and settings.groq_model_main:
+                from app.services.llm.groq import GroqLLM
+
+                providers.append(
+                    GroqLLM(
+                        settings.groq_api_key.get_secret_value(),
+                        settings.groq_model_fast,
+                        settings.groq_model_main,
+                        timeout_seconds=settings.llm_timeout_seconds,
+                        reasoning_effort=settings.groq_reasoning_effort,
+                    )
+                )
+                quotas["groq"] = QuotaGuard(settings.groq_rpm_limit, settings.groq_rpd_limit, wait)
+            else:
+                log.warning(
+                    "llm_provider_skipped",
+                    provider="groq",
+                    reason="GROQ_API_KEY, GROQ_MODEL_FAST or GROQ_MODEL_MAIN missing",
+                )
         else:
             log.warning("llm_provider_unknown", provider=name)
-    quota = QuotaGuard(
-        settings.llm_rpm_limit, settings.llm_rpd_limit, settings.quota_max_wait_seconds
-    )
-    return LLMRouter(providers, quota)
+    return LLMRouter(providers, quotas)

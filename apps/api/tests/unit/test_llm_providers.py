@@ -1,10 +1,13 @@
 """Quota guard (COST-4), provider chain (COST-5) and the Gemini adapter with a stub client.
 No network and no API key: Gemini is exercised through a fake `client.aio.models`."""
 
+import json
+from collections.abc import Callable
 from datetime import date
 from types import SimpleNamespace
 from typing import Any
 
+import httpx
 import pytest
 from google.genai import errors
 
@@ -16,6 +19,7 @@ from app.services.llm import (
     build_llm,
 )
 from app.services.llm.gemini import GeminiLLM
+from app.services.llm.groq import GROQ_BASE_URL, GroqLLM
 from app.services.quota import QuotaGuard
 from tests.conftest import make_settings
 
@@ -102,11 +106,24 @@ async def test_router_raises_when_every_provider_fails() -> None:
 async def test_router_stops_on_quota_without_calling_providers() -> None:
     t = FakeClock()
     llm = FakeLLM()
-    router = LLMRouter([llm], _guard(t, rpm=None, rpd=1))
+    router = LLMRouter([llm], {"fake": _guard(t, rpm=None, rpd=1)})
     await router.generate("q", "fast")
     with pytest.raises(LLMQuotaError):
         await router.generate("q", "fast")
     assert len(llm.calls) == 1
+
+
+async def test_quota_on_one_provider_falls_through_to_the_next() -> None:
+    t = FakeClock()
+
+    class Second(FakeLLM):
+        name = "second"
+
+    first, second = FakeLLM(["first"]), Second(["second"])
+    router = LLMRouter([first, second], {"fake": _guard(t, rpm=None, rpd=1)})
+    assert (await router.generate("q", "fast")).text == "first"
+    assert (await router.generate("q", "fast")).text == "second"
+    assert len(first.calls) == 1
 
 
 def test_build_llm_template_only_has_no_providers() -> None:
@@ -116,6 +133,25 @@ def test_build_llm_template_only_has_no_providers() -> None:
 def test_build_llm_skips_gemini_without_key_and_stops_at_template() -> None:
     router = build_llm(make_settings(llm_providers=["gemini", "fake", "template", "fake"]))
     assert [p.name for p in router.providers] == ["fake"]
+
+
+def test_build_llm_groq_first_with_its_own_quota() -> None:
+    settings = make_settings(
+        llm_providers=["groq", "template"],
+        groq_api_key="test-key",
+        groq_model_fast="test-fast",
+        groq_model_main="test-main",
+        groq_rpm_limit=30,
+        groq_rpd_limit=1000,
+    )
+    router = build_llm(settings)
+    assert [p.name for p in router.providers] == ["groq"]
+    assert (router.quotas["groq"].rpm_limit, router.quotas["groq"].rpd_limit) == (30, 1000)
+
+
+def test_build_llm_skips_groq_without_models() -> None:
+    settings = make_settings(llm_providers=["groq"], groq_api_key="test-key")
+    assert not build_llm(settings).available
 
 
 # --- Gemini adapter -------------------------------------------------------------------------
@@ -166,3 +202,82 @@ async def test_gemini_server_error_becomes_provider_error() -> None:
     with pytest.raises(LLMProviderError) as info:
         await _gemini(models).generate("q", "main")
     assert not isinstance(info.value, LLMQuotaError)
+
+
+# --- Groq adapter (OpenAI-compatible HTTP API, mocked transport) ------------------------------
+
+
+def _groq(handler: Callable[[httpx.Request], httpx.Response], **kwargs: Any) -> GroqLLM:
+    client = httpx.AsyncClient(base_url=GROQ_BASE_URL, transport=httpx.MockTransport(handler))
+    return GroqLLM("test-key", "test-fast", "test-main", client=client, **kwargs)
+
+
+def _completion(content: str) -> dict[str, Any]:
+    return {
+        "model": "test-fast",
+        "choices": [{"message": {"role": "assistant", "content": content}}],
+        "usage": {"prompt_tokens": 20, "completion_tokens": 5},
+    }
+
+
+async def test_groq_sends_system_schema_and_parses_json() -> None:
+    seen: list[dict[str, Any]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(json.loads(request.content))
+        assert request.headers["Authorization"] == "Bearer test-key"
+        assert request.url.path.endswith("/chat/completions")
+        return httpx.Response(200, json=_completion('{"intent": "smalltalk"}'))
+
+    llm = _groq(handler, reasoning_effort="low")
+    result = await llm.generate("q", "fast", json_schema={"type": "object"}, system="sys")
+    assert result.json == {"intent": "smalltalk"}
+    assert (result.tokens_in, result.tokens_out) == (20, 5)
+    body = seen[0]
+    assert body["model"] == "test-fast"
+    assert body["messages"][0] == {"role": "system", "content": "sys"}
+    assert body["response_format"]["type"] == "json_schema"
+    assert body["response_format"]["json_schema"]["strict"] is False
+    assert body["reasoning_effort"] == "low"
+
+
+async def test_groq_main_tier_plain_text() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        assert body["model"] == "test-main" and "response_format" not in body
+        return httpx.Response(200, json=_completion("Hello"))
+
+    result = await _groq(handler).generate("q", "main")
+    assert result.text == "Hello" and result.json is None
+
+
+async def test_groq_429_is_a_quota_error_and_500_a_provider_error() -> None:
+    with pytest.raises(LLMQuotaError):
+        await _groq(lambda r: httpx.Response(429, json={})).generate("q", "fast")
+    with pytest.raises(LLMProviderError) as info:
+        await _groq(lambda r: httpx.Response(500, json={})).generate("q", "fast")
+    assert not isinstance(info.value, LLMQuotaError)
+
+
+async def test_groq_network_error_is_a_provider_error() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("offline", request=request)
+
+    with pytest.raises(LLMProviderError):
+        await _groq(handler).generate("q", "fast")
+
+
+async def test_groq_stream_reads_server_sent_events() -> None:
+    events = [
+        'data: {"choices": [{"delta": {"role": "assistant"}}]}',
+        'data: {"choices": [{"delta": {"content": "Hel"}}]}',
+        'data: {"choices": [{"delta": {"content": "lo"}}]}',
+        "data: [DONE]",
+    ]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert json.loads(request.content)["stream"] is True
+        return httpx.Response(200, text="\n\n".join(events))
+
+    chunks = [c async for c in _groq(handler).stream("q", "main")]
+    assert "".join(chunks) == "Hello"

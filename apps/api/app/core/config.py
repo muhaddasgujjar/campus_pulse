@@ -54,7 +54,7 @@ class Settings(BaseSettings):
     # --- redis (Upstash) ---
     redis_url: str | None = None
 
-    # --- LLM (Gemini free tier, D15) ---
+    # --- LLM: Gemini free tier (D15). LLM_MODEL_FAST/MAIN are the Gemini model IDs ---
     gemini_api_key: SecretStr | None = None
     llm_providers: Annotated[list[str], NoDecode] = Field(default_factory=lambda: ["template"])
     llm_model_fast: str | None = None
@@ -65,10 +65,18 @@ class Settings(BaseSettings):
     embedding_batch_size: int = Field(default=16, ge=1, le=100)
     llm_timeout_seconds: float = Field(default=25, gt=0)
 
-    # --- quota guard (COST-4). Gemini free limits are unpublished: copy yours from AI Studio.
+    # --- Groq (free tier, OpenAI-compatible). LLM only: Groq has no embeddings API ---
+    groq_api_key: SecretStr | None = None
+    groq_model_fast: str | None = None
+    groq_model_main: str | None = None
+    groq_reasoning_effort: str | None = None  # gpt-oss models: low | medium | high
+
+    # --- quota guard per provider (COST-4). Copy the limits from each dashboard.
     # Empty = no local limit (the provider's 429 is still handled).
-    llm_rpm_limit: int | None = Field(default=None, ge=1)
-    llm_rpd_limit: int | None = Field(default=None, ge=1)
+    gemini_rpm_limit: int | None = Field(default=None, ge=1)
+    gemini_rpd_limit: int | None = Field(default=None, ge=1)
+    groq_rpm_limit: int | None = Field(default=None, ge=1)
+    groq_rpd_limit: int | None = Field(default=None, ge=1)
     quota_max_wait_seconds: float = Field(default=20, ge=0, le=60)
 
     # --- response cache (COST-3). In process now, Redis with data_version in M3.
@@ -103,8 +111,14 @@ class Settings(BaseSettings):
         "supabase_jwt_secret",
         "gemini_api_key",
         "internal_jobs_secret",
-        "llm_rpm_limit",
-        "llm_rpd_limit",
+        "groq_api_key",
+        "groq_model_fast",
+        "groq_model_main",
+        "groq_reasoning_effort",
+        "gemini_rpm_limit",
+        "gemini_rpd_limit",
+        "groq_rpm_limit",
+        "groq_rpd_limit",
         mode="before",
     )
     @classmethod
