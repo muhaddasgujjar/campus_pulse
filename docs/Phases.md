@@ -105,14 +105,14 @@ Review at the end of **W8** and **W11**. If behind, cut in this order:
 ### M4 · Multimodal Voice (W9-11)
 
 **Tasks**
-- [ ] Voice interfaces (`STTProvider`, `TTSProvider`) with browser adapters (Web Speech API, speechSynthesis) and a server fallback adapter (Gemini audio transcription, processed in memory).
-- [ ] Voice message endpoint and UI: record, waveform, send, transcript, edit and resend.
-- [ ] Spoken replies: "Listen" button using browser speech synthesis, voice-style answers (short, no markdown), hide the button when the device has no voice.
-- [ ] Voice limits (60 s, 10 MB) and MIME checks for the server fallback. Audio is never stored.
-- [ ] **Urdu test (W9):** 20 Urdu and Roman Urdu phrases on at least 3 real devices (Android Chrome, Windows Chrome, Windows Edge). Record recognition accuracy and which devices have an Urdu voice in `Memory.md`.
-- [ ] **Decision point (W9):** commit to live mode on browser speech (default), or try the Gemini Live API if free quota allows. No WebRTC.
-- [ ] Live mode (Should): continuous browser speech recognition, speech synthesis sentence by sentence, barge-in by cancelling playback and generation, overlay UI per `DESIGN.md` Section 5.2. The server sees text only.
-- [ ] Voice-specific eval items added to the golden set.
+- [x] Voice interfaces (`STTProvider`, `TTSProvider`) with browser adapters (Web Speech API, speechSynthesis) and a server fallback adapter (Gemini audio transcription, processed in memory). (2026-11-27; Gemini adapter tested with a stub client, needs GEMINI_API_KEY and STT_MODEL to run live)
+- [x] Voice message endpoint and UI: record, waveform, send, transcript, edit and resend. (2026-11-27)
+- [x] Spoken replies: "Listen" button using browser speech synthesis, voice-style answers (short, no markdown), hide the button when the device has no voice. (2026-11-27)
+- [x] Voice limits (60 s, 10 MB) and MIME checks for the server fallback. Audio is never stored. (2026-11-27; type and file-signature checks)
+- [ ] **Urdu test (W9):** 20 Urdu and Roman Urdu phrases on at least 3 real devices (Android Chrome, Windows Chrome, Windows Edge). Record recognition accuracy and which devices have an Urdu voice in `Memory.md`. (Test sheet ready: `docs/Voice-Test.md`. Needs the team and real devices)
+- [ ] **Decision point (W9):** commit to live mode on browser speech (default), or try the Gemini Live API if free quota allows. No WebRTC. (Built on browser speech per D18; confirm after the device test)
+- [x] Live mode (Should): continuous browser speech recognition, speech synthesis sentence by sentence, barge-in by cancelling playback and generation, overlay UI per `DESIGN.md` Section 5.2. The server sees text only. (2026-11-27; playback is cancelled, generation is not: see Architectural.md Section 9)
+- [x] Voice-specific eval items added to the golden set. (2026-11-27, 8 items, offline 9/9 voice items correct)
 
 **Exit criteria:** voice message round trip p95 under 8 s. Transcripts shown. Spoken replies work. Live mode works for at least a 3-turn conversation (or is formally cut with a note).
 
