@@ -12,6 +12,7 @@ admins have.
 import argparse
 import asyncio
 import getpass
+import json
 import sys
 import uuid
 from collections.abc import Awaitable, Callable
@@ -22,7 +23,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
-from app.db.models import KbEntry
+from app.db.models import Document, KbEntry
 from app.db.session import create_engine, create_sessionmaker
 from app.services import content_admin as admin
 from app.services.embeddings import build_embedder
@@ -183,10 +184,50 @@ async def cmd_doc_upload(session: AsyncSession, args: argparse.Namespace) -> int
 
 
 async def cmd_doc_approve(session: AsyncSession, args: argparse.Namespace) -> int:
-    document, result = await admin.approve_document(
-        session, args.id, actor(), build_embedder(get_settings())
+    embedder = build_embedder(get_settings())
+    for document_id in args.ids:
+        document, result = await admin.approve_document(
+            session, document_id, actor(), embedder, verified_on=args.verified
+        )
+        print(f"Approved {document.id}: {result.chunks} chunk(s), embedded={result.embedded}")
+    return 0
+
+
+async def cmd_doc_list(session: AsyncSession, args: argparse.Namespace) -> int:
+    stmt = select(Document).where(Document.institution_id == await _institution(session))
+    if args.status:
+        stmt = stmt.where(Document.status == args.status)
+    if args.category:
+        stmt = stmt.where(Document.category == args.category)
+    rows = await session.execute(stmt.order_by(Document.category, Document.title))
+    for document in rows.scalars():
+        url = f"  {document.source_url}" if document.source_url else ""
+        print(f"{document.id}  {document.status:<8} {document.category:<12} {document.title}{url}")
+    return 0
+
+
+async def cmd_doc_show(session: AsyncSession, args: argparse.Namespace) -> int:
+    document = await session.get(Document, args.id)
+    if document is None:
+        raise admin.ContentError(f"Document {args.id} not found.")
+    print(f"{document.title} [{document.status}, {document.category}] {document.source_url or ''}")
+    print(f"last verified: {document.last_verified or 'not yet'}\n")
+    print(document.content)
+    return 0
+
+
+async def cmd_doc_import_web(session: AsyncSession, args: argparse.Namespace) -> int:
+    payload = json.loads(await asyncio.to_thread(Path(args.snapshot).read_text, encoding="utf-8"))
+    pages = [admin.WebPage.model_validate(page) for page in payload["pages"]]
+    report = await admin.import_web_pages(
+        session, await _institution(session), pages, actor(), owner_name=args.owner
     )
-    print(f"Approved {document.id}: {result.chunks} chunk(s), embedded={result.embedded}")
+    print(
+        f"{len(pages)} page(s): {report.created} created, {report.updated} changed (back to "
+        f"pending), {report.unchanged} unchanged, {report.archived_skipped} archived (skipped)"
+    )
+    print("All imported pages are PENDING: review with `doc list --status pending` and "
+          "`doc show ID`, then `doc approve ID ...` (D6).")  # fmt: skip
     return 0
 
 
@@ -246,7 +287,7 @@ def build_parser() -> argparse.ArgumentParser:
     imp.add_argument("--commit", action="store_true")
     imp.set_defaults(func=cmd_import)
 
-    doc = sub.add_parser("doc", help="Text PDF documents").add_subparsers(
+    doc = sub.add_parser("doc", help="Documents: text PDFs and imported web pages").add_subparsers(
         dest="doc_command", required=True
     )
     upload = doc.add_parser("upload", help="Extract text and create a pending document")
@@ -257,9 +298,25 @@ def build_parser() -> argparse.ArgumentParser:
     upload.add_argument("--last-verified", type=_date, required=True)
     upload.add_argument("--expires", type=_date)
     upload.set_defaults(func=cmd_doc_upload)
-    doc_approve = doc.add_parser("approve")
-    doc_approve.add_argument("id", type=uuid.UUID)
+    doc_approve = doc.add_parser("approve", help="Approve, chunk and embed pending documents")
+    doc_approve.add_argument("ids", type=uuid.UUID, nargs="+")
+    doc_approve.add_argument(
+        "--verified", type=_date, default=date.today(), help="date checked with the office"
+    )
     doc_approve.set_defaults(func=cmd_doc_approve)
+    doc_list = doc.add_parser("list")
+    doc_list.add_argument("--status", choices=["draft", "pending", "approved", "archived"])
+    doc_list.add_argument("--category")
+    doc_list.set_defaults(func=cmd_doc_list)
+    doc_show = doc.add_parser("show", help="Print a document's text for review")
+    doc_show.add_argument("id", type=uuid.UUID)
+    doc_show.set_defaults(func=cmd_doc_show)
+    web = doc.add_parser(
+        "import-web", help="Load a website snapshot (app.devtools.web_import) as pending documents"
+    )
+    web.add_argument("snapshot")
+    web.add_argument("--owner", default="LGU website", help="shown as the source office")
+    web.set_defaults(func=cmd_doc_import_web)
 
     reindex = sub.add_parser("reindex", help="Re-chunk and re-embed all approved content")
     reindex.set_defaults(func=cmd_reindex)

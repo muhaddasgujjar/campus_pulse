@@ -8,6 +8,7 @@ speaker review (DESIGN.md Section 8), so non-English questions use the LLM when 
 from datetime import date
 from typing import Any
 
+from app.services.retrieval import coverage
 from app.tools.base import ToolResult
 
 
@@ -138,16 +139,39 @@ def structured_answer(result: ToolResult) -> str:
     return f"{body}\n{line}" if line else body
 
 
-def extractive_answer(result: ToolResult) -> str:
-    """Knowledge answer without an LLM: quote the best approved chunk (grounded by design)."""
-    top = result.data[0]
-    content = top["content"]
-    answer = content.split("\nA: ", 1)[1] if "\nA: " in content else content
-    if len(answer) > 700:
-        answer = answer[:700].rsplit(" ", 1)[0] + "…"
+def best_passage(content: str, query: str, max_chars: int = 700) -> str:
+    """The run of consecutive lines (at most max_chars) that covers most of the question's
+    words. A KB entry ("Q: ... A: ...") is quoted by its answer."""
+    if "\nA: " in content:
+        content = content.split("\nA: ", 1)[1]
+    if len(content) <= max_chars:
+        return content.strip()
+    lines = [line for line in content.splitlines() if line.strip()]
+    best_score, best = -1.0, ""
+    for start in range(len(lines)):
+        window: list[str] = []
+        size = 0
+        for line in lines[start:]:
+            if window and size + len(line) > max_chars:
+                break
+            window.append(line[:max_chars])
+            size += len(line) + 1
+        text = "\n".join(window)
+        score = coverage(query, text)
+        if score > best_score:  # ties keep the earlier passage
+            best_score, best = score, text
+    return best.strip()
+
+
+def extractive_answer(result: ToolResult, query: str) -> str:
+    """Knowledge answer without an LLM: quote the passage of the approved chunks that best
+    covers the question (grounded by design: every word is the source's own)."""
+    top = max(result.data, key=lambda row: coverage(query, f"{row['title']} {row['content']}"))
     owner = f" ({top['owner']})" if top.get("owner") else ""
-    text = f'According to "{top["title"]}"{owner}: {answer.strip()}'
-    line = source_line(result)
+    passage = best_passage(top["content"], query)
+    text = f'According to "{top["title"]}"{owner}:\n{passage}'
+    cited = [s for s in result.sources if s.title == top["title"]] or result.sources
+    line = source_line(ToolResult(result.tool, [top], cited, top.get("last_verified")))
     return f"{text}\n{line}" if line else text
 
 

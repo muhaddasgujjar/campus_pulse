@@ -13,7 +13,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-from pydantic import ValidationError
+from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -222,26 +222,107 @@ async def upload_document(
 
 
 async def approve_document(
-    session: AsyncSession, document_id: uuid.UUID, actor: Actor, embedder: Embedder | None
+    session: AsyncSession,
+    document_id: uuid.UUID,
+    actor: Actor,
+    embedder: Embedder | None,
+    verified_on: date | None = None,
 ) -> tuple[Document, IndexResult]:
+    """Approve and index. Approval is the staff check, so a document without a verification
+    date (an imported web page) gets `verified_on` as its last_verified date."""
     document = await session.get(Document, document_id)
     if document is None:
         raise ContentError(f"Document {document_id} not found.")
     if document.status != "pending":
         raise ContentError(f"Only pending documents can be approved (status is {document.status}).")
+    diff: dict[str, Any] = {"status": {"old": "pending", "new": "approved"}}
+    if document.last_verified is None and verified_on is not None:
+        document.last_verified = verified_on
+        diff["last_verified"] = {"old": None, "new": verified_on.isoformat()}
     document.status = "approved"
     document.approved_by = actor.user_id
     await session.flush()
-    _audit(
-        session,
-        actor,
-        document.institution_id,
-        "approve",
-        "documents",
-        document.id,
-        {"status": {"old": "pending", "new": "approved"}},
-    )
+    _audit(session, actor, document.institution_id, "approve", "documents", document.id, diff)
     return document, await index_document(session, document, embedder)
+
+
+# --- one-time website import (pending documents, D1 note and D6) -------------------------
+
+
+@dataclass
+class WebImportReport:
+    created: int = 0
+    updated: int = 0
+    unchanged: int = 0
+    archived_skipped: int = 0
+
+
+class WebPage(BaseModel):
+    """One page of a snapshot written by app.devtools.web_import."""
+
+    url: str = Field(min_length=8, max_length=500)
+    title: str = Field(min_length=1, max_length=300)
+    category: str = Field(min_length=1, max_length=40)
+    content: str = Field(min_length=1)
+    page_modified: str | None = None
+    sha256: str
+
+
+async def import_web_pages(
+    session: AsyncSession,
+    institution_id: uuid.UUID,
+    pages: list[WebPage],
+    actor: Actor,
+    *,
+    owner_name: str,
+) -> WebImportReport:
+    """Load pages as pending documents, keyed by URL. Nothing is indexed here: a staff member
+    approves each page (approve_document), which chunks and embeds it. A page whose text
+    changed goes back to pending and out of search until it is approved again."""
+    report = WebImportReport()
+    for page in pages:
+        existing = (
+            await session.execute(
+                select(Document).where(
+                    Document.institution_id == institution_id, Document.source_url == page.url
+                )
+            )
+        ).scalar_one_or_none()
+        if existing is None:
+            document = Document(
+                institution_id=institution_id,
+                title=page.title,
+                category=page.category,
+                owner_name=owner_name,
+                mime="text/html",
+                content=page.content,
+                status="pending",
+                uploaded_by=actor.user_id,
+                source_url=page.url,
+            )
+            session.add(document)
+            await session.flush()
+            _audit(session, actor, institution_id, "create", "documents", document.id,
+                   {"new": {"title": page.title, "url": page.url, "sha256": page.sha256,
+                            "characters": len(page.content)}})  # fmt: skip
+            report.created += 1
+            continue
+        if existing.content == page.content:
+            report.unchanged += 1
+            continue
+        if existing.status == "archived":  # staff removed it on purpose
+            report.archived_skipped += 1
+            continue
+        old_status = existing.status
+        existing.content, existing.title, existing.status = page.content, page.title, "pending"
+        existing.last_verified = None  # the new text has not been checked
+        await session.flush()
+        await index_document(session, existing, None)  # not approved: removes its chunks
+        _audit(session, actor, institution_id, "update", "documents", existing.id,
+               {"status": {"old": old_status, "new": "pending"}, "sha256": page.sha256,
+                "reason": "page text changed on the website"})  # fmt: skip
+        report.updated += 1
+    return report
 
 
 # --- CSV imports (DATA-2) ----------------------------------------------------------------

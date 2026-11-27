@@ -77,8 +77,15 @@ Run from `apps/api` with `uv run python -m app.cli <command>` (`--help` on each)
 | `seed ../../seed/lgu` | Load the seed folder and index the KB entries |
 | `kb list` / `kb add` / `kb submit` / `kb approve` / `kb reject` / `kb archive` | Knowledge entries with the approval workflow (approve re-embeds) |
 | `import timetable FILE` / `import faculty FILE` | CSV import (dry run unless `--commit`) |
-| `doc upload FILE.pdf` / `doc approve ID` | Text PDFs: extract, then approve to chunk and embed |
+| `doc upload FILE.pdf` | Text PDF: extract the text into a pending document |
+| `doc import-web SNAPSHOT.json` | Load a website snapshot as pending documents (unchanged pages skipped, changed pages back to pending) |
+| `doc list [--status pending] [--category fees]` / `doc show ID` | Review documents and their text |
+| `doc approve ID [ID ...] [--verified YYYY-MM-DD]` | Approve, then chunk and embed (only approved content is used for answers) |
 | `reindex` | Re-chunk and re-embed all approved content |
+
+### One-time website import (D1 note)
+
+`uv run python -m app.devtools.web_import ../../seed/lgu` reads the student-facing pages of the hosts in `institution.json` (`live_fetch_allowlist`) from the WordPress sitemap, honours robots.txt, waits 1 s between requests and writes `seed/lgu/web/lgu_website_<date>.json`. Load it with `doc import-web`. Every page stays **pending** until a staff member checks it with the office and runs `doc approve`. Run it by hand only: there is no scheduled scraper.
 
 ## Evaluation
 
@@ -104,12 +111,14 @@ Templates: [`apps/api/.env.example`](apps/api/.env.example) and [`apps/web/.env.
 | `SUPABASE_JWT_SECRET` | api | **yes** | Verify Supabase tokens (M5) |
 | `REDIS_URL` | api | **yes** | Upstash Redis TLS URL |
 | `GEMINI_API_KEY` | api | **yes** | Google AI Studio key |
-| `LLM_PROVIDERS` | api | no | Fallback chain, e.g. `gemini,template` |
+| `LLM_PROVIDERS` | api | no | Fallback chain, e.g. `groq,gemini,template` |
 | `LLM_MODEL_FAST` / `LLM_MODEL_MAIN` | api | no | Gemini model IDs from AI Studio (no defaults in code) |
 | `EMBEDDING_MODEL` / `EMBEDDING_DIM` | api | no | `gemini-embedding-001` / `768` (D17) |
 | `MAX_LLM_CALLS_PER_TURN` | api | no | LLM budget, at most 2 (COST-2) |
 | `LLM_TIMEOUT_SECONDS` | api | no | Abandon an LLM request after this many seconds |
-| `LLM_RPM_LIMIT` / `LLM_RPD_LIMIT` | api | no | Local quota guard, copied from AI Studio (empty = none) |
+| `GROQ_API_KEY` | api | **yes** | Groq key (free tier, LLM only) |
+| `GROQ_MODEL_FAST` / `GROQ_MODEL_MAIN` / `GROQ_REASONING_EFFORT` | api | no | Groq model IDs and gpt-oss reasoning effort |
+| `GEMINI_RPM_LIMIT` / `GEMINI_RPD_LIMIT` / `GROQ_RPM_LIMIT` / `GROQ_RPD_LIMIT` | api | no | Per-provider quota guard, copied from each dashboard (empty = none) |
 | `QUOTA_MAX_WAIT_SECONDS` | api | no | Wait near the per-minute limit before the busy fallback |
 | `RESPONSE_CACHE_TTL_SECONDS` | api | no | Response cache lifetime, 0 = off |
 | `RETRIEVAL_*` | api | no | Retrieval and grading thresholds, tuned with `make eval` |

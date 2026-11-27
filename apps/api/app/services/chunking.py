@@ -27,22 +27,34 @@ def _is_heading(line: str) -> bool:
     return bool(stripped) and len(stripped) <= 90 and bool(_HEADING.match(stripped))
 
 
+def _is_row(line: str) -> bool:
+    """A table row from the web import or a PDF table: cells separated by " | "."""
+    return " | " in line
+
+
 def _blocks(text: str) -> list[str]:
-    """Paragraph blocks; a heading starts a new block and stays attached to what follows."""
+    """Paragraph blocks; a heading starts a new block and stays attached to what follows.
+    Every table row is its own block, so rows keep their line breaks."""
     blocks: list[str] = []
     current: list[str] = []
+
+    def flush() -> None:
+        if current:
+            blocks.append(" ".join(current))
+            current.clear()
+
     for line in text.replace("\r\n", "\n").split("\n"):
         if not line.strip():
-            if current:
-                blocks.append(" ".join(current))
-                current = []
+            flush()
+            continue
+        if _is_row(line):
+            flush()
+            blocks.append(line.strip())
             continue
         if _is_heading(line) and current:
-            blocks.append(" ".join(current))
-            current = []
+            flush()
         current.append(line.strip())
-    if current:
-        blocks.append(" ".join(current))
+    flush()
     return blocks
 
 
@@ -65,6 +77,35 @@ def _split_long(block: str, max_words: int) -> list[str]:
     return pieces
 
 
+def _join(units: list[str]) -> str:
+    """Prose joins with spaces (PDF lines wrap mid-sentence); table rows keep their lines."""
+    out = ""
+    for unit in units:
+        if out:
+            out += "\n" if _is_row(unit) or _is_row(out.rsplit("\n", 1)[-1]) else " "
+        out += unit
+    return out
+
+
+def _words(units: list[str]) -> int:
+    return sum(len(u.split()) for u in units)
+
+
+def _overlap(units: list[str], overlap_words: int) -> list[str]:
+    """Tail of a finished chunk carried into the next one: whole table rows, or the last
+    words of a paragraph."""
+    if not overlap_words or not units:
+        return []
+    if not _is_row(units[-1]):
+        return [" ".join(units[-1].split()[-overlap_words:])]
+    carried: list[str] = []
+    for unit in reversed(units):
+        if not _is_row(unit) or _words([unit, *carried]) > overlap_words:
+            break
+        carried.insert(0, unit)
+    return carried
+
+
 def chunk_text(
     text: str,
     target_tokens: int = TARGET_TOKENS,
@@ -81,18 +122,38 @@ def chunk_text(
 
     chunks: list[list[str]] = []
     current: list[str] = []
-    for block in blocks:
-        words = block.split()
-        if current and len(current) + len(words) > max_words:
+    caption: list[str] = []  # short lines just above the table being chunked
+    recent: list[str] = []  # short non-row lines seen since the last table row
+
+    def start_next(carried: list[str], next_block: str | None) -> list[str]:
+        # A chunk that starts inside a table repeats the table's caption, so every row
+        # stays next to what it describes (for example which faculty a fee row belongs to).
+        if next_block is not None and _is_row(next_block) and caption:
+            missing = [c for c in caption if c not in carried]
+            if _words([*missing, *carried]) < max_words // 2:
+                return [*missing, *carried]
+        return carried
+
+    for index, block in enumerate(blocks):
+        if _is_row(block):
+            if recent:
+                caption, recent = recent[-2:], []
+        elif len(block.split()) <= 20:
+            recent.append(block)
+        else:
+            recent = []
+        words = len(block.split())
+        if current and _words(current) + words > max_words:
             chunks.append(current)
-            current = current[-overlap_words:] if overlap_words else []
-        current.extend(words)
-        if len(current) >= target_words:
+            current = start_next(_overlap(current, overlap_words), block)
+        current.append(block)
+        if _words(current) >= target_words:
             chunks.append(current)
-            current = current[-overlap_words:] if overlap_words else []
-    if current and (not chunks or len(current) > overlap_words):
+            following = blocks[index + 1] if index + 1 < len(blocks) else None
+            current = start_next(_overlap(current, overlap_words), following)
+    if current and (not chunks or _words(current) > overlap_words):
         chunks.append(current)
-    return [" ".join(words) for words in chunks if words]
+    return [_join(units) for units in chunks if units]
 
 
 def entry_chunk(title: str, question: str | None, answer: str) -> str:

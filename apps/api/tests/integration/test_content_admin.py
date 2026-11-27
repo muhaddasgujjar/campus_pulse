@@ -8,7 +8,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import AuditLog, Chunk, Department, Faculty, Institution
+from app.db.models import AuditLog, Chunk, Department, Document, Faculty, Institution
 from app.services import content_admin as admin
 from app.services.embeddings import FakeEmbedder
 from app.services.pdf import PdfRejectedError
@@ -191,3 +191,76 @@ async def test_faculty_import_resolves_department_and_audits(
     assert member.courses == ["TEST-101", "TEST-102"]
     assert member.department_id is not None
     assert await _actions(db_session, member.id) == ["create"]
+
+
+# --- one-time website import: pending until approved (D6) ----------------------------------
+
+
+def _page(content: str = "Test bus pass costs 500 per semester.", **extra: str) -> admin.WebPage:
+    values = {
+        "url": "https://test.edu/transport/",
+        "title": "Test transport page",
+        "category": "transport",
+        "content": content,
+        "sha256": "x" * 64,
+    }
+    values.update(extra)
+    return admin.WebPage.model_validate(values)
+
+
+async def test_web_pages_are_pending_and_not_searchable_until_approved(
+    db_session: AsyncSession, inst: uuid.UUID
+) -> None:
+    embedder = FakeEmbedder()
+    report = await admin.import_web_pages(
+        db_session, inst, [_page()], ACTOR, owner_name="Test website"
+    )
+    assert report.created == 1
+    document = (await db_session.execute(select(Document))).scalars().one()
+    assert (document.status, document.mime, document.last_verified) == (
+        "pending",
+        "text/html",
+        None,
+    )
+    assert (await search(db_session, embedder, inst, "test bus pass", k=3)).chunks == []
+
+    _, indexed = await admin.approve_document(
+        db_session, document.id, ACTOR, embedder, verified_on=date(2026, 10, 6)
+    )
+    assert indexed.chunks == 1 and document.last_verified == date(2026, 10, 6)
+    found = await search(db_session, embedder, inst, "How much is the test bus pass?", k=3)
+    assert found.chunks[0].source_url == "https://test.edu/transport/"
+    assert await _actions(db_session, document.id) == ["create", "approve"]
+
+
+async def test_reimport_skips_unchanged_and_sends_changed_pages_back_to_pending(
+    db_session: AsyncSession, inst: uuid.UUID
+) -> None:
+    embedder = FakeEmbedder()
+    await admin.import_web_pages(db_session, inst, [_page()], ACTOR, owner_name="Test website")
+    document = (await db_session.execute(select(Document))).scalars().one()
+    await admin.approve_document(db_session, document.id, ACTOR, embedder, date(2026, 10, 6))
+
+    same = await admin.import_web_pages(db_session, inst, [_page()], ACTOR, owner_name="T")
+    assert (same.unchanged, document.status) == (1, "approved")
+
+    changed = await admin.import_web_pages(
+        db_session, inst, [_page("Test bus pass now costs 900.")], ACTOR, owner_name="T"
+    )
+    assert changed.updated == 1
+    assert (document.status, document.last_verified) == ("pending", None)
+    chunks = await db_session.execute(select(Chunk).where(Chunk.document_id == document.id))
+    assert chunks.scalars().all() == []  # out of search until approved again
+    assert await _actions(db_session, document.id) == ["create", "approve", "update"]
+
+
+async def test_reimport_leaves_archived_pages_alone(
+    db_session: AsyncSession, inst: uuid.UUID
+) -> None:
+    await admin.import_web_pages(db_session, inst, [_page()], ACTOR, owner_name="T")
+    document = (await db_session.execute(select(Document))).scalars().one()
+    document.status = "archived"
+    report = await admin.import_web_pages(
+        db_session, inst, [_page("new text")], ACTOR, owner_name="T"
+    )
+    assert report.archived_skipped == 1 and document.content != "new text"

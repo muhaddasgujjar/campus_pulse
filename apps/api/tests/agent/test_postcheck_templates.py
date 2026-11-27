@@ -95,8 +95,29 @@ def test_extractive_answer_quotes_the_answer_part() -> None:
                "owner": "Test Hostel Office"}],
         sources=[Source(title="Test hostel", office="Test Hostel Office")],
     )  # fmt: skip
-    text = templates.extractive_answer(result)
-    assert text.startswith('According to "Test hostel" (Test Hostel Office): Two per room.')
+    text = templates.extractive_answer(result, "rooms")
+    assert text.startswith('According to "Test hostel" (Test Hostel Office):\nTwo per room.')
+
+
+def test_extractive_answer_quotes_the_chunk_and_lines_that_match_the_question() -> None:
+    notes = "Fee notes\n" + "\n".join(
+        f"Note {n}: security deposit is refundable." for n in range(40)
+    )
+    table = "Fee tables\n" + "\n".join(
+        [*(f"Program Alpha row {n} | 1,111" for n in range(30)),
+         "Test Social Sciences | Tuition Fee (Per Credit Hour) | 2,222",
+         *(f"Program Beta row {n} | 3,333" for n in range(30))]
+    )  # fmt: skip
+    result = ToolResult(
+        tool="search_knowledge",
+        data=[{"title": "Test fees", "content": notes, "owner": "Test Office"},
+              {"title": "Test fees", "content": table, "owner": "Test Office"}],
+        sources=[Source(title="Test fees", office="Test Office")],
+    )  # fmt: skip
+    text = templates.extractive_answer(result, "tuition per credit hour for social sciences")
+    assert "Test Social Sciences | Tuition Fee (Per Credit Hour) | 2,222" in text
+    assert "security deposit" not in text
+    assert len(text) < 900
 
 
 def test_fallback_names_the_office_contact() -> None:

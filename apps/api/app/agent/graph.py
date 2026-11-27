@@ -213,10 +213,10 @@ async def retrieve(state: AgentState, runtime: Runtime[AgentDeps]) -> dict[str, 
     return update
 
 
-def _template_for(results: list[ToolResult]) -> str:
+def _template_for(results: list[ToolResult], query: str) -> str:
     result = results[0]
     if result.tool == "search_knowledge":
-        return templates.extractive_answer(result)
+        return templates.extractive_answer(result, query)
     return templates.structured_answer(result)
 
 
@@ -229,7 +229,11 @@ async def compose(state: AgentState, runtime: Runtime[AgentDeps]) -> dict[str, A
     use_template = is_structured and language == "en" and not wants_explanation(state["query"])
     template_mode = "template" if is_structured else "extractive"
     if use_template:
-        return {"answer": _template_for(results), "answer_mode": "template", "sources": sources}
+        return {
+            "answer": _template_for(results, state["redacted_query"]),
+            "answer_mode": "template",
+            "sources": sources,
+        }
     result, counters, error = await _llm(
         state,
         deps,
@@ -242,7 +246,7 @@ async def compose(state: AgentState, runtime: Runtime[AgentDeps]) -> dict[str, A
     if error is not None or result is None:
         log.info("compose_by_template", reason=type(error).__name__)
         return {
-            "answer": _template_for(results),
+            "answer": _template_for(results, state["redacted_query"]),
             "answer_mode": template_mode,
             "sources": sources,
             **counters,
@@ -265,7 +269,7 @@ async def post_check(state: AgentState, runtime: Runtime[AgentDeps]) -> dict[str
             "answer_mode": "fallback",
         }
     log.warning("post_check_invented_numbers", invented=sorted(check.invented))
-    template = _template_for(results)
+    template = _template_for(results, state["redacted_query"])
     return {
         "answer": ensure_required_notes(template, results),
         "answer_mode": "template" if results[0].tool != "search_knowledge" else "extractive",
