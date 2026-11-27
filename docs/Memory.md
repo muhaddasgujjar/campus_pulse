@@ -120,9 +120,9 @@ Milestones follow the proposal (M1 to M7). Tick items when done and add the date
 - [ ] **M6 Deployment and Hardening** (W15-16)
 - [ ] **M7 Testing and Final Delivery** (W17)
 
-**Current milestone:** M3 (code complete 2026-11-27 on branch `feat/M3-chat`, stacked on `feat/M2-data-rag`; M1 and M2 live items still open)
-**Current focus:** M3 chat MVP built and tested locally (`make api-local` + `make web-dev`). Next: push the branch and open the M3 PR, run the chat against the dev Supabase project and a real Upstash Redis, measure first-token latency with Groq, then M4.
-**Blocked on:** `DATABASE_URL` for `campus-pulse-dev` and `REDIS_URL` (Upstash) in `apps/api/.env`, a Groq key (live eval, latency) and a Gemini key (embeddings). Staff review of the imported pages. Verified faculty and timetable data. The 100 collected student questions (golden set to 100 items).
+**Current milestone:** M4 (code complete 2026-11-27 on branch `feat/M4-voice`, stacked on `feat/M3-chat` / PR #3; the Urdu device test is open)
+**Current focus:** M4 voice built and tested with fake speech engines (vitest, Playwright). Next: run `docs/Voice-Test.md` on 3 real devices and record the results here, make the W9 live-mode decision, add a Gemini key and STT_MODEL for the server fallback, then M5.
+**Blocked on:** the Urdu device test (people and devices). A Gemini key (embeddings for Roman Urdu and synonym retrieval, and the voice fallback with STT_MODEL). `DATABASE_URL` and `REDIS_URL` for the dev projects. Staff review of the imported pages. Verified faculty and timetable data. The 100 collected student questions.
 
 **M1 scaffold checklist** (see `Phases.md` M1 for the full task list)
 - [x] Repo layout per `Architectural.md` Section 4, `CLAUDE.md`, README, Makefile, pre-commit, `.claude/` commands (2026-10-05)
@@ -154,6 +154,16 @@ Milestones follow the proposal (M1 to M7). Tick items when done and add the date
 - [ ] Run against dev Supabase and real Upstash; p95 first token under 4 s with Groq; test a sleeping Render service (M6)
 - [ ] Golden set to 100 items (needs the collected questions)
 
+**M4 checklist** (see `Phases.md` M4)
+- [x] Server fallback `POST /api/voice/transcribe`: raw body, type + file-signature checks, 10 MB cap, rate limit, Gemini in memory, nothing stored or logged (2026-11-27, stub client and FakeSTT only)
+- [x] Voice messages: mic, recording bar (timer, waveform, live transcript, EN / Urdu), voice bubble, Edit and resend, mic-denied sheet, privacy note (2026-11-27)
+- [x] Listen button: browser speechSynthesis, spoken version without source line or markdown, hidden without a voice for the language (2026-11-27)
+- [x] Live mode on browser speech: overlay, captions, barge-in with an echo check, tap to interrupt, mute (2026-11-27)
+- [x] 8 voice golden items, Playwright voice tests (desktop and phone) (2026-11-27)
+- [ ] Urdu device test (`docs/Voice-Test.md`) on Android Chrome, Windows Chrome, Windows Edge: results here
+- [ ] W9 decision: keep live mode on browser speech or cut it (after the device test)
+- [ ] Voice message round trip p95 under 8 s, measured on devices
+
 **Free limits (record from each dashboard, with the date read)**
 | Service | Limit as shown in the dashboard | Date read |
 |---|---|---|
@@ -180,7 +190,11 @@ Milestones follow the proposal (M1 to M7). Tick items when done and add the date
 | Timetable source (spreadsheet from department)? | Team | W5 |
 | Does Google AI Studio work from the team's accounts in Pakistan? Which Gemini model IDs (fast and main)? Record the free limits shown in AI Studio | Team | W1 |
 | Supervisors accept "Docker, AWS-ready, hosted on free tiers" instead of AWS in the proposal? Update the stack and architecture slides | Team and supervisor | W2 |
-| Live mode on browser speech (default) or the Gemini Live API if quota allows? | Team | W9 |
+| Live mode on browser speech (default) or the Gemini Live API if quota allows? Built on browser speech (D18); decide after the device test in `docs/Voice-Test.md` | Team | W9 |
+| **M4 decision to confirm:** the voice fallback takes the raw recording as the request body (no multipart upload, no `python-multipart` dependency); the 60 s limit is enforced in the browser, 10 MB on the server | Team | M4 review |
+| **M4 decision to confirm:** live-mode barge-in stops playback only; there is no server-side cancel (answers take about 2 s and are still stored in the chat). Echo check: speech that mostly repeats the answer is ignored | Team | M4 review |
+| **M4 decision to confirm:** devices without an Urdu voice (Chrome on Windows) read Urdu answers with the Hindi voice from a Devanagari version (dictionary of common words + letter rules in `apps/web/lib/voice/urdu.ts`). Browser only, no server cost (D18 unchanged). Native Urdu voices are used where they exist (Edge, Android). Check understandability in the device test | Team | Device test |
+| Gemini model ID for `STT_MODEL` (audio input) from AI Studio's free list, and its free limits | Team | Before UAT |
 | Redaction of stored messages: apply to user text only? Phone redaction would also hide office numbers in bot answers. (M2 redacts user text before the LLM and in `unanswered_queries`; bot answers are not redacted) | Team | W3 (M2) |
 | Urdu answers without an LLM: templates are English only until a native speaker reviews Urdu templates (DESIGN.md Section 8). Who reviews? | Team | M3 |
 | Light theme values: DESIGN.md gives 4 light colors; the rest in `tokens.css` are placeholders. Confirm in Figma | Team | W2 |
@@ -212,6 +226,9 @@ Milestones follow the proposal (M1 to M7). Tick items when done and add the date
 - The embedded dev database (`apps/api/.localdb`) can take longer than pgserver's 10 s start timeout after an unclean shutdown (crash recovery); the first command fails with `TimeoutExpired`, the next one works.
 - Only one `next dev` per app folder: stop `make web-dev` before `make e2e` (it starts its own web server on :3001). On Windows, stopping the npm wrapper can leave the Next.js child running; `taskkill /PID <pid> /T /F`.
 - Seeding and querying must use the same embedder. `make api-local` uses `EMBEDDING_MODEL=fake` unless Gemini is configured; after switching, run `uv run python -m app.cli reindex`.
+- Headless Chromium has no usable speech engine or microphone: Playwright voice tests install fakes (`apps/web/e2e/voiceFakes.ts`). The real check is `docs/Voice-Test.md` on devices.
+- **Chrome on Windows has no Urdu text-to-speech voice** (only Windows voices and Google online voices, which include Hindi but not Urdu). Edge on Windows has Microsoft's online Urdu voices; Android depends on the Google TTS language data. Without the Hindi fallback, Urdu live mode on Windows Chrome showed answers silently.
+- Live mode without headphones can hear its own voice. The echo check ignores speech that mostly repeats the answer, but test it on real speakers.
 - Voice APIs in the browser differ by device. Urdu voices and speech recognition quality vary, so test on real devices.
 
 ## 10. Session Log *(update, append only, newest at the bottom)*
@@ -272,3 +289,18 @@ Template:
 - Capacity: a Groq plan call is about 1,600 tokens; the free 8K tokens per minute allows about 2 to 3 LLM-planned turns per minute. Rules-first makes common exact-data questions cost 0 tokens.
 - Tests: pytest 305 passed; vitest 35 passed; offline eval 91% (63/69).
 - Security: the Groq key was pasted into the chat. Rotate it in the Groq console and put the new key in apps/api/.env.
+
+### 2026-11-27 · M4 · Multimodal voice
+- Done: branch `feat/M4-voice` (5 commits on top of PR #3). Server fallback transcription (`POST /api/voice/transcribe`, raw audio body, type and file-signature checks, 10 MB cap, rate limit, Gemini in memory with the shared quota guard, nothing stored or logged). Voice messages with live Web Speech transcript (restarts after pauses), server fallback when recognition is missing or fails, voice bubbles with Edit and resend, mic-denied sheet, privacy note, EN / Urdu switch. Listen button (spoken version without source lines, URLs or markdown, sentence by sentence, hidden without a voice). Live mode overlay on browser speech with barge-in, echo check, tap to interrupt and mute. 8 voice golden items. Playwright voice tests with fake speech engines. `docs/Voice-Test.md` for the Urdu device test (VOI-7).
+- Decisions: raw-body upload; 60 s limit in the browser; no server-side cancel for barge-in; echo check; EN / Urdu switch stored per browser until M5 profiles.
+- Mistakes caught: a commit briefly included the generated `apps/web/AGENTS.md` and `CLAUDE.md` and a type error; both fixed by amending before any push.
+- Tests: pytest 328 passed; vitest 69 passed; Playwright 14 passed (desktop and phone, including a real WebM recording through the server fallback with STT_MODEL=fake); offline eval 92% (71/77), voice items 9/9. Screenshots reviewed (recording bar, voice answer, live mode).
+- Next: the device test (people and devices); a Gemini key and STT_MODEL for the fallback and embeddings; push `feat/M4-voice` and open the M4 PR; then M5.
+- Questions for the user: see Section 8 (raw-body upload, barge-in without server cancel, STT model ID).
+
+### 2026-11-27 · M4 · Urdu voice in live mode
+- Problem (user, Windows Chrome): live mode in Urdu did not work. Cause: Chrome on Windows has no Urdu voice, so Urdu answers were shown silently. Also found: Urdu answers containing English names (BSCS, FY, LGU website) could be detected as English; bracketed Urdu source notes "(ماخذ: ...)" and mid-answer list bullets were read aloud; a single Chrome "network" recognition error closed live mode; an unsupported language would have restarted silently forever.
+- Fix: Urdu answers use a native Urdu voice when the device has one, else the Hindi voice reading a Devanagari version (dictionary + rules; the student still sees Urdu); language detection by Urdu-script share (30%); bracketed source notes and bullets dropped from speech; "Rs" read as روپے; live mode retries 3 network drops, restarts recognition after a short delay, and ends with a clear note for unsupported language or blocked audio capture; one-time note when the Hindi voice is used.
+- Verified end to end with Groq in Chromium simulating Windows Chrome voices: recognition ur-PK, Urdu answer from the fee table, spoken by "Google हिन्दी" (e.g. "BSCS की दाख़िला फ़ीस 17,500 रुपये है, हर क्रेडिट घंटे की ट्यूशन 7,744 रुपये ..."). Words that came out approximate were added to the dictionary and pinned in a test.
+- Tests: vitest 83 passed; Playwright 14 passed; lint and types clean.
+- Next: the device test on real Windows Chrome, Windows Edge and Android Chrome, including how understandable the Hindi fallback is for Pakistani listeners.

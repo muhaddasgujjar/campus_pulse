@@ -32,6 +32,7 @@ from app.db.repositories import conversations as repo
 from app.db.session import create_sessionmaker
 from app.services.embeddings import Embedder, build_embedder
 from app.services.llm import LLMRouter, build_llm
+from app.services.quota import QuotaGuard, RedisDayCounter
 from app.services.ratelimit import MemoryRateLimiter, RateLimiter, RedisRateLimiter
 from app.services.session_memory import (
     MemorySessionMemory,
@@ -40,6 +41,8 @@ from app.services.session_memory import (
     Turn,
     append_turn,
 )
+from app.services.voice import STTProvider
+from app.services.voice.transcribe import build_stt
 
 log = get_logger("chat")
 
@@ -61,6 +64,7 @@ class ChatServices:
     cache: ResponseCache
     rate_limiter: RateLimiter
     memory: SessionMemory
+    stt: STTProvider | None = None  # server fallback transcription (VOI-1), None = off
 
     def today(self, now: datetime | None = None) -> date:
         offset = timezone(timedelta(hours=self.settings.institution_utc_offset_hours))
@@ -87,6 +91,13 @@ def build_chat_services(
         )
         session_memory = RedisSessionMemory(redis, settings.session_memory_ttl_seconds, memory)
     llm = build_llm(settings, redis)
+    # Transcription shares the Gemini quota with the LLM (same free-tier key and limits).
+    stt_quota = llm.quotas.get("gemini") or QuotaGuard(
+        settings.gemini_rpm_limit,
+        settings.gemini_rpd_limit,
+        settings.quota_max_wait_seconds,
+        day_counter=RedisDayCounter(redis, "gemini") if redis else None,
+    )
     return ChatServices(
         settings=settings,
         sessionmaker=create_sessionmaker(engine) if engine is not None else None,
@@ -95,6 +106,7 @@ def build_chat_services(
         cache=cache,
         rate_limiter=rate_limiter,
         memory=session_memory,
+        stt=build_stt(settings, stt_quota),
     )
 
 

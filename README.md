@@ -4,7 +4,7 @@ A WhatsApp-style chat, with voice messages and a live voice mode, that answers L
 
 Final year project, LGU Department of Computer Science. Docs: [`docs/`](docs/) (start with [`docs/Memory.md`](docs/Memory.md)).
 
-> **Status:** milestone M3 (real-time chat MVP): the WhatsApp-style chat over a WebSocket, with sources, verified badges, feedback, fallback cards, reconnect and resume, on top of the M2 data and RAG core (schema, structured tools, hybrid retrieval, the LangGraph agent, a minimal admin CLI and the golden-set evaluation). Voice and the admin portal come in M4 and M5. See [`docs/Phases.md`](docs/Phases.md).
+> **Status:** milestone M4 (multimodal voice): voice messages with a live transcript (and a server fallback), spoken replies with a Listen button, and a hands-free live mode, all on browser speech. Built on the M3 real-time chat (WebSocket, sources, verified badges, feedback, reconnect) and the M2 data and RAG core. The admin portal comes in M5. Real-device voice results: [`docs/Voice-Test.md`](docs/Voice-Test.md). See [`docs/Phases.md`](docs/Phases.md).
 
 ## Free stack (Rs 0 per month, no credit card)
 
@@ -128,6 +128,8 @@ Templates: [`apps/api/.env.example`](apps/api/.env.example) and [`apps/web/.env.
 | `CHAT_RATE_LIMIT_MESSAGES` / `CHAT_RATE_LIMIT_WINDOW_SECONDS` | api | no | Anonymous rate limit per IP, default 20 per 600 s (CHAT-7) |
 | `SESSION_MEMORY_TURNS` / `SESSION_MEMORY_TTL_SECONDS` | api | no | Session memory, default last 6 turns for 24 h (CHAT-5) |
 | `CHAT_MAX_MESSAGE_CHARS` | api | no | Longest accepted chat message, default 1000 |
+| `STT_MODEL` | api | no | Gemini model ID with audio input for the voice fallback (needs `GEMINI_API_KEY`); empty = off, `fake` for local tests |
+| `VOICE_MAX_MB` | api | no | Largest accepted recording for the fallback, default 10 |
 | `RETRIEVAL_*` | api | no | Retrieval and grading thresholds, tuned with `make eval` |
 | `INTERNAL_JOBS_SECRET` | api | **yes** | Header secret for `/internal/jobs/daily` |
 | `CHAT_RETENTION_DAYS` | api | no | Message retention, default 60 |
@@ -147,6 +149,7 @@ Templates: [`apps/api/.env.example`](apps/api/.env.example) and [`apps/web/.env.
 | `WS /ws/chat` | Chat: `user_message`, `resume`, `ping` in; `ack`, `status`, `sources`, `token`, `final`, `error`, `pong` out. Protocol: [`docs/Architectural.md`](docs/Architectural.md) Section 8 |
 | `GET /api/conversations/{id}/messages` | Latest 100 messages of a conversation (reload, CHAT-9) |
 | `POST /api/feedback` | Thumbs up or down on an answer, with an optional reason and comment (CHAT-4) |
+| `POST /api/voice/transcribe?lang=en\|ur` | Voice fallback for browsers without speech recognition: raw audio body (webm, ogg, mp4, aac, mp3, wav), 10 MB at most, transcribed in memory and never stored (VOI-1) |
 
 Until M5 everyone chats anonymously, rate-limited by IP; the WebSocket only accepts origins in `CORS_ORIGINS`. Without `REDIS_URL` the rate limit, session memory and response cache run in process.
 

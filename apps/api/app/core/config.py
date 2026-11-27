@@ -92,6 +92,11 @@ class Settings(BaseSettings):
     session_memory_ttl_seconds: int = Field(default=86400, ge=60)
     chat_max_message_chars: int = Field(default=1000, ge=10, le=2000)  # SEC-2 input limit
 
+    # --- voice (M4, D18): browser speech first; the server only transcribes as a fallback ---
+    # Gemini model ID with audio input for POST /api/voice/transcribe. Empty = fallback off.
+    stt_model: str | None = None
+    voice_max_mb: int = Field(default=10, ge=1, le=20)
+
     # --- retrieval and grading (tune on the golden set, Architectural.md Section 6) ---
     retrieval_top_k: int = Field(default=5, ge=1, le=20)
     retrieval_min_similarity: float = Field(default=0.62, ge=0, le=1)
@@ -123,6 +128,7 @@ class Settings(BaseSettings):
         "supabase_url",
         "redis_url",
         "llm_model_fast",
+        "stt_model",
         "llm_model_main",
         "embedding_model",
         "supabase_service_role_key",

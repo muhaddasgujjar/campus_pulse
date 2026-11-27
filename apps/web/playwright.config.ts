@@ -35,7 +35,12 @@ export default defineConfig({
       url: `http://localhost:${API_PORT}/readyz`,
       timeout: 180_000,
       reuseExistingServer: !process.env.CI,
-      env: { LLM_PROVIDERS: "template", REDIS_URL: "", RESPONSE_CACHE_TTL_SECONDS: "0" },
+      env: {
+        LLM_PROVIDERS: "template",
+        STT_MODEL: "fake",
+        REDIS_URL: "",
+        RESPONSE_CACHE_TTL_SECONDS: "0",
+      },
     },
     {
       command: `npm run dev -- --port ${WEB_PORT}`,

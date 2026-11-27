@@ -272,7 +272,7 @@ Server to client:
 |---|---|
 | Session | `GET /me` (profile and role), `PUT /me/profile`, `DELETE /me/data` |
 | Chat | `GET /conversations/{id}/messages`, `POST /feedback` |
-| Voice (fallback only) | `POST /voice/transcribe` (multipart audio, processed in memory, returns transcript) |
+| Voice (fallback only) | `POST /voice/transcribe?lang=en\|ur` (raw audio body with its Content-Type, processed in memory, returns `{transcript}`) |
 | Public | `GET /deadlines/upcoming`, `GET /config` |
 | Admin | `/admin/kb`, `/admin/documents`, `/admin/faculty`, `/admin/timetable` (+ `/import`), `/admin/fees`, `/admin/offices`, `/admin/key-dates`, `/admin/approvals`, `/admin/unanswered`, `/admin/users` (uses the Supabase Admin API), `/admin/audit`, `/admin/metrics`, `/admin/usage`, `/admin/export` |
 | Internal jobs | `POST /internal/jobs/daily` (secret header, called by GitHub Actions): retention purge, expiry reminders, usage rollup, Supabase keep-alive |
@@ -288,9 +288,10 @@ Hold or tap mic → MediaRecorder + SpeechRecognition (ur-PK / en-US / auto by p
   → live transcript appears while recording → user sends
   → transcript goes over the WebSocket as modality=voice (same agent)
   → text answer streams back → "Listen" uses speechSynthesis
-Fallback (browser without SpeechRecognition): POST /voice/transcribe → Gemini audio input → transcript
+Fallback (browser without SpeechRecognition, or recognition failed): POST /api/voice/transcribe → Gemini audio input → transcript
 ```
-- The server never stores audio. Limits for the fallback: 60 s, 10 MB, allowed MIME types, rate-limited.
+- The server never stores audio. Limits for the fallback: 60 s (enforced by the browser recorder), 10 MB (`VOICE_MAX_MB`, read with a cap), allowed audio types whose file signature must match the declared type, rate-limited per IP. Neither audio nor transcript is logged.
+- M4 implementation: the body is the raw recording with its Content-Type (no multipart parsing, no temp files, no `python-multipart` dependency). The model is `STT_MODEL` with `GEMINI_API_KEY`, sharing the Gemini quota guard with the LLM. Without them the endpoint answers 503 and the browser asks the student to type.
 - The Web Speech API in Chrome sends audio to Google's speech service. Show this in the privacy note.
 - TTS quality and the availability of an Urdu voice depend on the device. Test on real devices in week 9 and document results.
 
@@ -298,7 +299,8 @@ Fallback (browser without SpeechRecognition): POST /voice/transcribe → Gemini 
 ```
 Continuous SpeechRecognition (interim results) → final phrase → WebSocket text → agent
   → streamed text → speechSynthesis (sentence by sentence)
-Barge-in: when the recognizer hears speech during playback, call speechSynthesis.cancel() and send a cancel message to stop generation.
+Barge-in: when the recognizer hears speech during playback, call speechSynthesis.cancel().
+M4 implementation: there is no server-side cancel message. Answers are computed in about 2 s and streamed after the post-check, so stopping generation would save almost nothing; the interrupted answer stays in the chat. Speech heard during playback that mostly repeats the answer's own words is treated as the speakers' echo, not as the student. Tapping the screen always interrupts.
 ```
 The server sees text only, so live mode costs no extra server resources. The Gemini Live API (free "live" models) is a Could if quota allows.
 

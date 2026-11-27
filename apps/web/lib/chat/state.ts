@@ -12,6 +12,9 @@ export type ChatMessage = {
   localId: string;
   id: string | null;
   role: "user" | "assistant";
+  modality: "text" | "voice";
+  /** Voice notes: recording length in seconds (unknown after a reload). */
+  seconds: number | null;
   text: string;
   sources: Source[];
   createdAt: number;
@@ -33,7 +36,14 @@ export type ChatState = {
 };
 
 export type ChatAction =
-  | { type: "send"; localId: string; text: string; now: number }
+  | {
+      type: "send";
+      localId: string;
+      text: string;
+      now: number;
+      modality?: "text" | "voice";
+      seconds?: number | null;
+    }
   | { type: "server"; event: ServerEvent; now: number }
   | { type: "connection"; connection: Connection }
   | { type: "history"; messages: ChatMessage[]; conversationId: string }
@@ -59,6 +69,8 @@ function blank(role: ChatMessage["role"], now: number, patch: Partial<ChatMessag
     localId: localId(role === "user" ? "u" : "a"),
     id: null,
     role,
+    modality: "text",
+    seconds: null,
     text: "",
     sources: [],
     createdAt: now,
@@ -170,7 +182,12 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         notice: null,
         messages: [
           ...state.messages,
-          blank("user", action.now, { localId: action.localId, text: action.text }),
+          blank("user", action.now, {
+            localId: action.localId,
+            text: action.text,
+            modality: action.modality ?? "text",
+            seconds: action.seconds ?? null,
+          }),
         ],
       };
     case "server":
