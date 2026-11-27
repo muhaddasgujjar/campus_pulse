@@ -196,7 +196,8 @@ Tables are dense but readable (row height 48 px, zebra off, hover highlight). De
 | Rate limited | Inline notice | "You're sending messages fast. Please wait a moment." |
 | Waking up (server cold start) | Header dot amber, skeleton reply, progress text | "Waking up the assistant. This can take up to a minute the first time." |
 | Assistant at capacity (AI quota) | Inline notice, queue status, then the fallback card | "Lots of students are asking right now. Please try again in a minute, or contact the office." |
-| No Urdu voice on this device | "Listen" button hidden for Urdu replies | "Voice playback isn't available in Urdu on this device." |
+| No Urdu voice on this device, Hindi voice available (Chrome on Windows) | Urdu replies are read by the Hindi voice from a Devanagari version (the student still sees Urdu). Live mode shows a one-time note | "No Urdu voice on this device: Urdu answers are read with the Hindi voice." |
+| Neither an Urdu nor a Hindi voice | "Listen" button hidden for Urdu replies; live mode shows captions only | "Voice playback isn't available in Urdu on this device." |
 | Mic denied | Explainer sheet | "Allow microphone access to send voice messages." |
 | Admin empty table | Illustration and CTA | "No entries yet. Add the first one." |
 

@@ -77,6 +77,8 @@ On each device:
 |---|---|
 | Is the **Listen** button shown for an English answer? Does it sound clear? | |
 | Is **Listen** shown for an Urdu answer (ask phrase 1 in Urdu)? If shown, is the Urdu voice understandable? | |
+| Which voice read the Urdu answer: a real Urdu voice (Edge: "Microsoft Asad / Uzma … Urdu (Pakistan)"; Android: Google Urdu) or the Hindi voice fallback (Chrome on Windows: "Google हिन्दी", live mode shows a note)? Rate how understandable it is for a Pakistani listener: good / acceptable / poor | |
+| Write down any Urdu words the Hindi fallback mispronounces (they can be added to `apps/web/lib/voice/urdu.ts`) | |
 | Names of the voices offered (Chrome: open the page, the voice is chosen automatically; note what you hear) | |
 
 The button is hidden on purpose when the device has no voice for the answer's language.

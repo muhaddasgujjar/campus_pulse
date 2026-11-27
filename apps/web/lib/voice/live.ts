@@ -20,7 +20,10 @@ import {
 } from "@/lib/voice/support";
 
 export type LiveState = "starting" | "listening" | "thinking" | "speaking" | "muted";
-export type LiveEndReason = "mic" | "network" | "unsupported";
+export type LiveEndReason = "mic" | "network" | "unsupported" | "language";
+
+const MAX_NETWORK_RETRIES = 3;
+const RESTART_DELAY_MS = 250;
 
 export type LiveHandlers = {
   onState: (state: LiveState) => void;
@@ -33,6 +36,8 @@ export type LiveHandlers = {
   onFail: (reason: LiveEndReason) => void;
   /** The answer could not be spoken (no voice for its language on this device). */
   onNoVoice?: (lang: SpeechLang) => void;
+  /** An Urdu answer is read by the Hindi voice (no Urdu voice on this device). */
+  onUrduViaHindi?: () => void;
 };
 
 export type LiveDeps = {
@@ -79,6 +84,8 @@ export class LiveSession {
   private state: LiveState = "starting";
   private speakingText = "";
   private ended = false;
+  private networkErrors = 0;
+  private restartTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     private lang: SpeechLang,
@@ -125,20 +132,43 @@ export class LiveSession {
     recognition.lang = RECOGNITION_LOCALE[this.lang];
     recognition.continuous = true;
     recognition.interimResults = true;
-    recognition.onresult = (event) => this.onResult(event);
+    recognition.onresult = (event) => {
+      this.networkErrors = 0;
+      this.onResult(event);
+    };
     recognition.onerror = (event) => {
-      if (event.error === "not-allowed" || event.error === "service-not-allowed") this.fail("mic");
-      else if (event.error === "network") this.fail("network");
+      switch (event.error) {
+        case "not-allowed":
+        case "service-not-allowed":
+        case "audio-capture":
+          this.fail("mic");
+          break;
+        case "language-not-supported":
+          this.fail("language");
+          break;
+        case "network":
+          // Chrome's recognition service drops now and then: retry a few times first.
+          this.networkErrors += 1;
+          if (this.networkErrors > MAX_NETWORK_RETRIES) this.fail("network");
+          break;
+        default: // "no-speech", "aborted": keep listening
+      }
     };
     recognition.onend = () => {
-      // Sessions end after pauses: keep listening until the student ends live mode.
-      if (!this.ended && this.state !== "muted" && this.recognition === recognition) {
+      // Sessions end after pauses: keep listening until the student ends live mode. A short
+      // delay avoids Chrome rejecting a restart while the old session is still closing.
+      if (this.ended || this.state === "muted" || this.recognition !== recognition) return;
+      const delay = RESTART_DELAY_MS * Math.max(1, this.networkErrors);
+      this.restartTimer = setTimeout(() => {
+        this.restartTimer = null;
+        if (this.ended || this.state === "muted" || this.recognition !== recognition) return;
         try {
           recognition.start();
         } catch {
-          this.fail("network");
+          this.recognition = null;
+          this.listen(); // a fresh session
         }
-      }
+      }, delay);
     };
     this.recognition = recognition;
     try {
@@ -174,6 +204,7 @@ export class LiveSession {
     const lang = speechLangOf(text);
     const spoken = spokenText(text, hasSources, lang);
     this.speakingText = spoken;
+    if (lang === "ur" && this.deps.speaker?.voiceFor("ur")?.viaHindi) this.handlers.onUrduViaHindi?.();
     this.set("speaking");
     const started = this.deps.speaker?.play(spoken, lang, {
       onEnd: () => {
@@ -238,6 +269,7 @@ export class LiveSession {
     recognition?.abort();
     if (this.state === "speaking") this.deps.speaker?.stop();
     if (this.levelTimer) clearInterval(this.levelTimer);
+    if (this.restartTimer) clearTimeout(this.restartTimer);
     this.meter?.close();
     this.stream?.getTracks().forEach((track) => track.stop());
   }

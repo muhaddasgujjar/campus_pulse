@@ -128,12 +128,78 @@ describe("LiveSession", () => {
   });
 
   it("keeps listening when the browser ends a recognition session", async () => {
-    const { session } = makeSession(makeDeps());
+    vi.useFakeTimers();
+    try {
+      const { session } = makeSession(makeDeps());
+      await session.start();
+      const recognition = FakeRecognition.latest();
+      recognition.onend?.();
+      expect(recognition.started).toBe(1); // restarted after a short delay, not at once
+      vi.advanceTimersByTime(250);
+      expect(recognition.started).toBe(2);
+      session.end();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("retries a few network drops before giving up", async () => {
+    vi.useFakeTimers();
+    try {
+      const { session, failed } = makeSession(makeDeps());
+      await session.start();
+      const recognition = FakeRecognition.latest();
+      for (let i = 0; i < 3; i += 1) {
+        recognition.onerror?.({ error: "network" });
+        recognition.onend?.();
+        vi.advanceTimersByTime(1000);
+      }
+      expect(failed).toEqual([]);
+      expect(session.current).toBe("listening");
+      recognition.say(["hello again", false]); // a result resets the count
+      recognition.onerror?.({ error: "network" });
+      expect(failed).toEqual([]);
+      recognition.onerror?.({ error: "network" });
+      recognition.onerror?.({ error: "network" });
+      recognition.onerror?.({ error: "network" });
+      expect(failed).toEqual(["network"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("ends with a clear reason when the browser cannot recognise the language", async () => {
+    const { session, failed } = makeSession(makeDeps());
     await session.start();
-    const recognition = FakeRecognition.latest();
-    recognition.onend?.();
-    expect(recognition.started).toBe(2);
-    session.end();
+    FakeRecognition.latest().onerror?.({ error: "language-not-supported" });
+    expect(failed).toEqual(["language"]);
+    expect(session.current).toBe("listening");
+  });
+
+  it("speaks Urdu answers with the Hindi voice when there is no Urdu voice", async () => {
+    const deps = makeDeps(
+      new FakeSynth([
+        { lang: "en-US", name: "Test English" },
+        { lang: "hi-IN", name: "Test Hindi" },
+      ]),
+    );
+    const viaHindi = vi.fn();
+    const session = new LiveSession("ur", deps, {
+      onState: () => undefined,
+      onHeard: () => undefined,
+      onUtterance: () => undefined,
+      onLevel: () => undefined,
+      onFail: () => undefined,
+      onUrduViaHindi: viaHindi,
+    });
+    await session.start();
+    FakeRecognition.latest().say(["بی ایس سی ایس کی فیس کتنی ہے", true]);
+    session.answer("BSCS کی فیس Rs 7,744 ہے۔\n(ماخذ: Fee Structure, LGU website)", true);
+    expect(viaHindi).toHaveBeenCalled();
+    expect(session.current).toBe("speaking");
+    const spoken = deps.synth.spoken[0];
+    expect(spoken?.text).toBe("BSCS की फ़ीस 7,744 रुपये है।");
+    expect(spoken?.voice).toMatchObject({ lang: "hi-IN" });
   });
 
   it("ends with a reason when the microphone is blocked or unsupported", async () => {

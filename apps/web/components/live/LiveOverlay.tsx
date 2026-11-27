@@ -21,6 +21,8 @@ export const LIVE_END_NOTES: Record<LiveEndReason, string> = {
   mic: "Live mode stopped: allow microphone access to talk hands-free.",
   network: "Live mode stopped: speech recognition lost its connection. You can keep typing.",
   unsupported: "Live mode works in Chrome and Edge.",
+  language:
+    "Speech recognition for this language isn't available in this browser. Try Chrome or Edge with an internet connection.",
 };
 
 type LiveOverlayProps = {
@@ -61,6 +63,8 @@ export function LiveOverlay({ messages, notice, onAsk, onClose, deps }: LiveOver
       },
       onLevel: setLevel,
       onFail: (reason) => onClose(LIVE_END_NOTES[reason]),
+      onUrduViaHindi: () =>
+        setVoiceNote("No Urdu voice on this device: Urdu answers are read with the Hindi voice."),
       onNoVoice: (spokenLang) =>
         setVoiceNote(
           spokenLang === "ur"

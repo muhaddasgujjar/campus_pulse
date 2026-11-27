@@ -6,28 +6,38 @@
 
 import { answerParts } from "@/lib/chat/format";
 import type { SpeechLang } from "@/lib/voice/support";
+import { urduToDevanagari } from "@/lib/voice/urdu";
 
-const URDU_LETTER = /[؀-ۿ]/g;
+const URDU_LETTER = /[\u0600-\u06FF]/g;
 
-/** "ur" when most letters are Urdu script, else "en". */
+/**
+ * "ur" when a good share of the letters are Urdu script. Urdu answers often carry English
+ * names (BSCS, LGU website, FY), so a simple majority would misread them as English.
+ */
 export function speechLangOf(text: string): SpeechLang {
   const urdu = (text.match(URDU_LETTER) ?? []).length;
   const latin = (text.match(/[A-Za-z]/g) ?? []).length;
-  return urdu > latin ? "ur" : "en";
+  return urdu > 0 && urdu >= 0.3 * (urdu + latin) ? "ur" : "en";
 }
 
 /** What "Listen" reads: the answer without its source line, URLs, markdown or symbols. */
 export function spokenText(text: string, hasSources: boolean, lang: SpeechLang = speechLangOf(text)): string {
   const { body, passedNotices } = answerParts(text, hasSources);
-  let spoken = [body, ...passedNotices].join(" ");
-  spoken = spoken
+  let spoken = [body, ...passedNotices]
+    .join("\n")
     .split("\n")
-    .filter((line) => !/^\s*(Source|ماخذ)\s*:/.test(line))
+    .filter((line) => !/^\s*\(?\s*(Source|ماخذ)\s*:/.test(line))
+    .map((line) => line.replace(/^\s*[-•]\s+/, "").trim())
+    .filter(Boolean)
     .join(". ")
+    // source notes in brackets inside a line: "(ماخذ: Fee Structure, ...)"
+    .replace(/\(\s*(Source|ماخذ)\s*:[^)]*\)/g, "")
     .replace(/https?:\/\/\S+/g, "")
-    .replace(/^\s*[-•]\s+/gm, "")
     .replace(/\s+·\s+/g, ", ");
-  if (lang === "en") spoken = spoken.replace(/\bRs\.?\s?(?=\d)/g, "rupees ");
+  spoken =
+    lang === "en"
+      ? spoken.replace(/\bRs\.?\s?(?=\d)/g, "rupees ")
+      : spoken.replace(/\bRs\.?\s?(\d[\d,]*)/g, "$1 روپے");
   return spoken.replace(/\.\s*\./g, ".").replace(/\s{2,}/g, " ").trim();
 }
 
@@ -75,6 +85,8 @@ export type SynthLike = {
   getVoices(): SpeechSynthesisVoice[];
 };
 
+export type VoiceChoice = { voice: SpeechSynthesisVoice; viaHindi: boolean };
+
 export type PlayHandlers = {
   onProgress?: (fraction: number) => void;
   onEnd?: () => void;
@@ -89,13 +101,29 @@ export class Speaker {
     private readonly Utterance: typeof SpeechSynthesisUtterance,
   ) {}
 
+  /**
+   * How `lang` would be spoken on this device: its own voice, or (Urdu only) the Hindi voice
+   * reading a Devanagari version (Chrome on Windows has no Urdu voice), or null.
+   */
+  voiceFor(lang: SpeechLang): VoiceChoice | null {
+    const voices = this.synth.getVoices();
+    const own = pickVoice(voices, lang);
+    if (own) return { voice: own, viaHindi: false };
+    if (lang === "ur") {
+      const hindi = voices.find((v) => v.lang.replace("_", "-").toLowerCase().startsWith("hi"));
+      if (hindi) return { voice: hindi, viaHindi: true };
+    }
+    return null;
+  }
+
   /** Speak `text`; returns false when the device has no voice for the language. */
   play(text: string, lang: SpeechLang, handlers: PlayHandlers = {}): boolean {
-    const voice = pickVoice(this.synth.getVoices(), lang);
-    if (!voice) return false;
+    const choice = this.voiceFor(lang);
+    if (!choice) return false;
+    const { voice, viaHindi } = choice;
     this.stop();
     const token = ++this.token;
-    const pieces = sentences(text);
+    const pieces = sentences(text).map((piece) => (viaHindi ? urduToDevanagari(piece) : piece));
     const total = pieces.reduce((sum, p) => sum + p.length, 0) || 1;
     let done = 0;
     this.endCurrent = () => handlers.onEnd?.();
@@ -139,7 +167,7 @@ export class Speaker {
   }
 
   hasVoice(lang: SpeechLang): boolean {
-    return pickVoice(this.synth.getVoices(), lang) !== null;
+    return this.voiceFor(lang) !== null;
   }
 }
 

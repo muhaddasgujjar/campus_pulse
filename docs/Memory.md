@@ -193,6 +193,7 @@ Milestones follow the proposal (M1 to M7). Tick items when done and add the date
 | Live mode on browser speech (default) or the Gemini Live API if quota allows? Built on browser speech (D18); decide after the device test in `docs/Voice-Test.md` | Team | W9 |
 | **M4 decision to confirm:** the voice fallback takes the raw recording as the request body (no multipart upload, no `python-multipart` dependency); the 60 s limit is enforced in the browser, 10 MB on the server | Team | M4 review |
 | **M4 decision to confirm:** live-mode barge-in stops playback only; there is no server-side cancel (answers take about 2 s and are still stored in the chat). Echo check: speech that mostly repeats the answer is ignored | Team | M4 review |
+| **M4 decision to confirm:** devices without an Urdu voice (Chrome on Windows) read Urdu answers with the Hindi voice from a Devanagari version (dictionary of common words + letter rules in `apps/web/lib/voice/urdu.ts`). Browser only, no server cost (D18 unchanged). Native Urdu voices are used where they exist (Edge, Android). Check understandability in the device test | Team | Device test |
 | Gemini model ID for `STT_MODEL` (audio input) from AI Studio's free list, and its free limits | Team | Before UAT |
 | Redaction of stored messages: apply to user text only? Phone redaction would also hide office numbers in bot answers. (M2 redacts user text before the LLM and in `unanswered_queries`; bot answers are not redacted) | Team | W3 (M2) |
 | Urdu answers without an LLM: templates are English only until a native speaker reviews Urdu templates (DESIGN.md Section 8). Who reviews? | Team | M3 |
@@ -226,6 +227,7 @@ Milestones follow the proposal (M1 to M7). Tick items when done and add the date
 - Only one `next dev` per app folder: stop `make web-dev` before `make e2e` (it starts its own web server on :3001). On Windows, stopping the npm wrapper can leave the Next.js child running; `taskkill /PID <pid> /T /F`.
 - Seeding and querying must use the same embedder. `make api-local` uses `EMBEDDING_MODEL=fake` unless Gemini is configured; after switching, run `uv run python -m app.cli reindex`.
 - Headless Chromium has no usable speech engine or microphone: Playwright voice tests install fakes (`apps/web/e2e/voiceFakes.ts`). The real check is `docs/Voice-Test.md` on devices.
+- **Chrome on Windows has no Urdu text-to-speech voice** (only Windows voices and Google online voices, which include Hindi but not Urdu). Edge on Windows has Microsoft's online Urdu voices; Android depends on the Google TTS language data. Without the Hindi fallback, Urdu live mode on Windows Chrome showed answers silently.
 - Live mode without headphones can hear its own voice. The echo check ignores speech that mostly repeats the answer, but test it on real speakers.
 - Voice APIs in the browser differ by device. Urdu voices and speech recognition quality vary, so test on real devices.
 
@@ -295,3 +297,10 @@ Template:
 - Tests: pytest 328 passed; vitest 69 passed; Playwright 14 passed (desktop and phone, including a real WebM recording through the server fallback with STT_MODEL=fake); offline eval 92% (71/77), voice items 9/9. Screenshots reviewed (recording bar, voice answer, live mode).
 - Next: the device test (people and devices); a Gemini key and STT_MODEL for the fallback and embeddings; push `feat/M4-voice` and open the M4 PR; then M5.
 - Questions for the user: see Section 8 (raw-body upload, barge-in without server cancel, STT model ID).
+
+### 2026-11-27 · M4 · Urdu voice in live mode
+- Problem (user, Windows Chrome): live mode in Urdu did not work. Cause: Chrome on Windows has no Urdu voice, so Urdu answers were shown silently. Also found: Urdu answers containing English names (BSCS, FY, LGU website) could be detected as English; bracketed Urdu source notes "(ماخذ: ...)" and mid-answer list bullets were read aloud; a single Chrome "network" recognition error closed live mode; an unsupported language would have restarted silently forever.
+- Fix: Urdu answers use a native Urdu voice when the device has one, else the Hindi voice reading a Devanagari version (dictionary + rules; the student still sees Urdu); language detection by Urdu-script share (30%); bracketed source notes and bullets dropped from speech; "Rs" read as روپے; live mode retries 3 network drops, restarts recognition after a short delay, and ends with a clear note for unsupported language or blocked audio capture; one-time note when the Hindi voice is used.
+- Verified end to end with Groq in Chromium simulating Windows Chrome voices: recognition ur-PK, Urdu answer from the fee table, spoken by "Google हिन्दी" (e.g. "BSCS की दाख़िला फ़ीस 17,500 रुपये है, हर क्रेडिट घंटे की ट्यूशन 7,744 रुपये ..."). Words that came out approximate were added to the dictionary and pinned in a test.
+- Tests: vitest 83 passed; Playwright 14 passed; lint and types clean.
+- Next: the device test on real Windows Chrome, Windows Edge and Android Chrome, including how understandable the Hindi fallback is for Pakistani listeners.
