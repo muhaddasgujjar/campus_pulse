@@ -14,7 +14,8 @@ PROFILES ?=
 PROFILE_FLAGS := $(foreach p,$(PROFILES),--profile $(p))
 
 .PHONY: help install up down logs test test-api test-web lint lint-api lint-web fmt \
-        typecheck typecheck-api typecheck-web build-web docker-api migrate seed eval web-dev api-dev
+        typecheck typecheck-api typecheck-web build-web docker-api migrate seed eval web-dev api-dev \
+        api-local e2e
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
@@ -81,3 +82,9 @@ web-dev: ## Next.js dev server on http://localhost:3000
 
 api-dev: ## FastAPI dev server with reload on http://localhost:8000
 	cd $(API) && $(UV) run uvicorn app.main:app --reload --port 8000
+
+api-local: ## API on :8000 with no cloud: embedded Postgres, migrated and seeded (dev only)
+	cd $(API) && $(UV) run python -m app.devtools.serve
+
+e2e: ## Playwright smoke tests (starts api-local on :8001 and the web app on :3001)
+	cd $(WEB) && $(NPM) run e2e
