@@ -79,8 +79,15 @@ class Settings(BaseSettings):
     groq_rpd_limit: int | None = Field(default=None, ge=1)
     quota_max_wait_seconds: float = Field(default=20, ge=0, le=60)
 
-    # --- response cache (COST-3). In process now, Redis with data_version in M3.
+    # --- response cache (COST-3): Redis when REDIS_URL is set, else in process. 0 = off.
     response_cache_ttl_seconds: int = Field(default=3600, ge=0)
+
+    # --- chat (M3): rate limit per IP (CHAT-7) and session memory (CHAT-5) ---
+    chat_rate_limit_messages: int = Field(default=20, ge=1)
+    chat_rate_limit_window_seconds: int = Field(default=600, ge=1)
+    session_memory_turns: int = Field(default=6, ge=0, le=20)
+    session_memory_ttl_seconds: int = Field(default=86400, ge=60)
+    chat_max_message_chars: int = Field(default=1000, ge=10, le=2000)  # SEC-2 input limit
 
     # --- retrieval and grading (tune on the golden set, Architectural.md Section 6) ---
     retrieval_top_k: int = Field(default=5, ge=1, le=20)

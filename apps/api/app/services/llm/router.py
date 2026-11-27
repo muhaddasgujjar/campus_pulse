@@ -8,6 +8,8 @@ when Groq's free quota runs out the next provider (Gemini) is tried.
 from collections.abc import AsyncIterator, Mapping
 from typing import Any
 
+from redis.asyncio import Redis
+
 from app.core.config import Settings
 from app.core.logging import get_logger
 from app.services.llm.base import (
@@ -16,7 +18,7 @@ from app.services.llm.base import (
     LLMResult,
     ModelTier,
 )
-from app.services.quota import QuotaGuard
+from app.services.quota import QuotaGuard, RedisDayCounter
 
 log = get_logger("llm")
 
@@ -73,8 +75,9 @@ class LLMRouter:
         raise last or LLMProviderError("no LLM provider configured")
 
 
-def build_llm(settings: Settings) -> LLMRouter:
-    """Build the chain from LLM_PROVIDERS. Unconfigured providers are skipped with a warning."""
+def build_llm(settings: Settings, redis: Redis | None = None) -> LLMRouter:
+    """Build the chain from LLM_PROVIDERS. Unconfigured providers are skipped with a warning.
+    With Redis, each provider's daily count is shared across restarts (COST-4)."""
     providers: list[LLMProvider] = []
     quotas: dict[str, QuotaGuard] = {}
     wait = settings.quota_max_wait_seconds
@@ -98,7 +101,10 @@ def build_llm(settings: Settings) -> LLMRouter:
                     )
                 )
                 quotas["gemini"] = QuotaGuard(
-                    settings.gemini_rpm_limit, settings.gemini_rpd_limit, wait
+                    settings.gemini_rpm_limit,
+                    settings.gemini_rpd_limit,
+                    wait,
+                    day_counter=RedisDayCounter(redis, "gemini") if redis else None,
                 )
             else:
                 log.warning(
@@ -119,7 +125,12 @@ def build_llm(settings: Settings) -> LLMRouter:
                         reasoning_effort=settings.groq_reasoning_effort,
                     )
                 )
-                quotas["groq"] = QuotaGuard(settings.groq_rpm_limit, settings.groq_rpd_limit, wait)
+                quotas["groq"] = QuotaGuard(
+                    settings.groq_rpm_limit,
+                    settings.groq_rpd_limit,
+                    wait,
+                    day_counter=RedisDayCounter(redis, "groq") if redis else None,
+                )
             else:
                 log.warning(
                     "llm_provider_skipped",

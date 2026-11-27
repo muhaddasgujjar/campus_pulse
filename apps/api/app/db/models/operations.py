@@ -4,7 +4,7 @@ import uuid
 from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import Date, DateTime, ForeignKey, Integer, Text, func
+from sqlalchemy import Date, DateTime, ForeignKey, Index, Integer, Text, func
 from sqlalchemy.dialects.postgresql import INET, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -13,6 +13,10 @@ from app.db.models.base import Base, Timestamps, UUIDPk
 
 class AuditLog(UUIDPk, Timestamps, Base):
     __tablename__ = "audit_log"
+    # data_version for the response cache: the latest audit row per institution (COST-3).
+    __table_args__ = (
+        Index("ix_audit_log_institution_id_created_at", "institution_id", "created_at"),
+    )
 
     # clock_timestamp(), not now(): now() is fixed per transaction, so the actions of one admin
     # write (create, update, approve) would share a timestamp and lose their order.

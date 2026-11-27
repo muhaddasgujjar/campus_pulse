@@ -14,7 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agent.cache import InMemoryResponseCache
 from app.agent.service import AgentAnswer, answer_question, make_deps
 from app.agent.state import StudentProfile
-from app.db.models import KbEntry, UnansweredQuery, UsageDaily
+from app.db.models import Institution, KbEntry, UnansweredQuery, UsageDaily
+from app.services import audit
 from app.services.embeddings import FakeEmbedder
 from app.services.ingestion import index_entry
 from app.services.llm import FakeLLM, LLMRouter
@@ -279,7 +280,17 @@ async def test_repeat_question_is_served_from_cache_until_data_changes(
     second = await ask(db_session, embedder, "what are the fees for bscs", cache=cache)
     assert (first.cache_hit, second.cache_hit, second.mode) == (False, True, "cache")
     assert second.answer == first.answer and second.sources == first.sources
-    await cache.bump_version()  # a staff edit
+    institution_id = (await db_session.execute(select(Institution.id))).scalar_one()
+    audit.record(  # a staff edit: every content write records an audit row (rule 7)
+        db_session,
+        institution_id=institution_id,
+        action="update",
+        table_name="fees",
+        row_id=None,
+        diff={},
+        actor_label="test",
+    )
+    await db_session.flush()
     third = await ask(db_session, embedder, "What are the fees for BSCS?", cache=cache)
     assert not third.cache_hit
 

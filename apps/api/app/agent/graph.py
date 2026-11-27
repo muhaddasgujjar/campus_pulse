@@ -34,7 +34,7 @@ from app.agent.prompts import PLANNER_SYSTEM, composer_prompt, composer_system, 
 from app.agent.state import AgentDeps, AgentState, Plan
 from app.core.logging import get_logger
 from app.core.redact import redact
-from app.db.repositories.agent_log import add_usage, log_unanswered
+from app.db.repositories.agent_log import add_usage, data_version, log_unanswered
 from app.services.llm import LLMBudgetError, LLMProviderError, LLMResult
 from app.services.retrieval import grade
 from app.tools import ToolContext, run_tool
@@ -101,13 +101,18 @@ async def normalize(state: AgentState, runtime: Runtime[AgentDeps]) -> dict[str,
     redacted = redact(query)  # before anything is stored or sent to the LLM (SEC-3, SEC-5)
     language = detect_language(query)
     profile = state.get("profile")
-    version = deps.cache.data_version if deps.cache is not None else 0
+    # Read the content version only when there is a cache to key (one indexed query).
+    version = await data_version(deps.session, deps.institution_id) if deps.cache else "0"
     return {
         "redacted_query": redacted,
         "language": language,
         "today": deps.today,
         "cache_key": cache_key(
-            normalize_query(redacted), language, profile.program if profile else None, version
+            normalize_query(redacted),
+            language,
+            profile.program if profile else None,
+            version,
+            deps.today,
         ),
         "llm_calls": 0,
         "tokens_in": 0,

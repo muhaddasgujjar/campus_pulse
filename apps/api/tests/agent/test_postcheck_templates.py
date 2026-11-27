@@ -130,12 +130,14 @@ def test_fallback_names_the_office_contact() -> None:
 # --- response cache (COST-3) ---------------------------------------------------------------
 
 
-def test_cache_key_depends_on_language_program_and_data_version() -> None:
-    base = cache_key(normalize_query("  What is the FEE? "), "en", None, 1)
-    assert base == cache_key("what is the fee", "en", None, 1)
-    assert base != cache_key("what is the fee", "roman_ur", None, 1)
-    assert base != cache_key("what is the fee", "en", "BSCS", 1)
-    assert base != cache_key("what is the fee", "en", None, 2)
+def test_cache_key_depends_on_language_program_data_version_and_today() -> None:
+    day = date(2026, 10, 5)
+    base = cache_key(normalize_query("  What is the FEE? "), "en", None, "v1", day)
+    assert base == cache_key("what is the fee", "en", None, "v1", day)
+    assert base != cache_key("what is the fee", "roman_ur", None, "v1", day)
+    assert base != cache_key("what is the fee", "en", "BSCS", "v1", day)
+    assert base != cache_key("what is the fee", "en", None, "v2", day)
+    assert base != cache_key("what is the fee", "en", None, "v1", date(2026, 10, 6))
 
 
 async def test_cache_ttl_and_size_limit() -> None:
@@ -149,9 +151,3 @@ async def test_cache_ttl_and_size_limit() -> None:
     assert await cache.get("k3") == answer
     now[0] = 11
     assert await cache.get("k3") is None
-
-
-async def test_bump_version_changes_the_version() -> None:
-    cache = InMemoryResponseCache(ttl_seconds=60)
-    assert await cache.bump_version() == 2
-    assert cache.data_version == 2
