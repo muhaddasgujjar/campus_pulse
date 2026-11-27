@@ -67,16 +67,16 @@ Review at the end of **W8** and **W11**. If behind, cut in this order:
 ### M2 · Data and RAG Core (W3-5)
 
 **Tasks**
-- [ ] Alembic migrations for all tables in `Architectural.md` Section 5, run against the Supabase dev project (session pooler URL): `vector(768)`, HNSW and GIN indexes, RLS enabled with no policies, and the `hybrid_search` SQL function.
-- [ ] Seed scripts in `seed/lgu/`: offices, fees, key dates, faculty sample, 30 knowledge entries, timetable sample CSV.
-- [ ] Structured tools with unit tests: `get_timetable`, `find_faculty`, `get_fee`, `get_office`, `get_key_dates`.
-- [ ] **Minimal admin path** (API plus very simple pages, or CLI import): CRUD for knowledge entries, CSV import for timetable and faculty, text PDF upload. Full portal comes in M5.
-- [ ] Ingestion service: extract text, chunk, embed, upsert, re-embed on edit.
-- [ ] Retrieval: `hybrid_search` (vector plus keyword, RRF in SQL), filters, embedding cache with Gemini 768-dimension embeddings. No reranker model (optional LLM rerank behind a flag, default off).
-- [ ] LangGraph agent v1 within the LLM budget (at most 2 LLM calls and 1 embedding call per turn): normalize, plan, tools, deterministic grader, composer rules, fallback, today's date injection, response cache, template answers for exact data.
-- [ ] `eval/golden.jsonl` v1 (at least 50 items) and `make eval` printing metrics.
-- [ ] Redaction utility with tests.
-- [ ] `LLMProvider` interface with a Gemini adapter, a **fake LLM** for tests, and the quota guard (per-minute and per-day counters).
+- [x] Alembic migrations for all tables in `Architectural.md` Section 5, run against the Supabase dev project (session pooler URL): `vector(768)`, HNSW and GIN indexes, RLS enabled with no policies, and the `hybrid_search` SQL function. (2026-10-05, verified on local Postgres 16 + pgvector; the Supabase dev run waits for the project)
+- [ ] Seed scripts in `seed/lgu/`: offices, fees, key dates, faculty sample, 30 knowledge entries, timetable sample CSV. (2026-10-05: loader done; offices, fees, 1 key date, 7 KB entries from public pages. Faculty and timetable rows and the other 23 KB entries need verified data from the offices)
+- [x] Structured tools with unit tests: `get_timetable`, `find_faculty`, `get_fee`, `get_office`, `get_key_dates`. (2026-10-05)
+- [x] **Minimal admin path** (API plus very simple pages, or CLI import): CRUD for knowledge entries, CSV import for timetable and faculty, text PDF upload. Full portal comes in M5. (2026-10-05, CLI)
+- [x] Ingestion service: extract text, chunk, embed, upsert, re-embed on edit. (2026-10-05)
+- [x] Retrieval: `hybrid_search` (vector plus keyword, RRF in SQL), filters, embedding cache with Gemini 768-dimension embeddings. No reranker model (optional LLM rerank behind a flag, default off). (2026-10-05, tested with the fake embedder; live Gemini embeddings wait for the API key)
+- [x] LangGraph agent v1 within the LLM budget (at most 2 LLM calls and 1 embedding call per turn): normalize, plan, tools, deterministic grader, composer rules, fallback, today's date injection, response cache, template answers for exact data. (2026-10-05)
+- [x] `eval/golden.jsonl` v1 (at least 50 items) and `make eval` printing metrics. (2026-10-05, 68 items written from seed facts; replace with the collected student questions)
+- [x] Redaction utility with tests. (M1, applied to user text before the LLM and before logging unanswered queries in M2)
+- [x] `LLMProvider` interface with a Gemini adapter, a **fake LLM** for tests, and the quota guard (per-minute and per-day counters). (2026-10-05, Gemini adapter tested with a stub client only)
 
 **Exit criteria:** `make eval` runs. At least 80% correct on golden v1, 0 invented numbers, fallback works, timetable and fee answers match tables exactly.
 

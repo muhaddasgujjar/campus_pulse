@@ -1,19 +1,103 @@
 {
   "_template": {
-    "description": "Knowledge base entries (table kb_entries, Architectural.md Section 5). Add one object per entry to `entries`. Only verified facts from an LGU office or an approved document.",
+    "description": "Knowledge base entries (table kb_entries, Architectural.md Section 5). Only verified facts from an LGU office or an approved document. Seeded entries come from the facts listed in docs/Memory.md Section 6 and docs/PRD.md Section 9 and must be confirmed with the owning office before the demo.",
     "fields": {
-      "title": "Short title, e.g. 'Entry test format'",
+      "title": "Short title",
       "question": "Optional student-style question this entry answers",
       "answer": "The approved answer text",
       "category": "admissions | fees | exams | scholarships | hostel | policies | contacts | other",
-      "department": "Owning office or department name (must match a department or office)",
+      "owner_name": "Office responsible for this fact (shown in the 'Verified by' badge)",
       "language": "en | ur | roman_ur",
-      "status": "draft | pending | approved | archived (seeds normally use approved)",
-      "last_verified": "YYYY-MM-DD, the real date the office confirmed it",
+      "status": "draft | pending | approved | archived",
+      "last_verified": "YYYY-MM-DD",
       "expires_at": "YYYY-MM-DD or null",
-      "source_url": "Public page or document the fact comes from, or null",
-      "verified_by": "Name of the office that confirmed it"
+      "source_url": "Public page the fact comes from, or null"
     }
   },
-  "entries": []
+  "entries": [
+    {
+      "title": "Minimum marks for admission",
+      "question": "What are the minimum marks required for admission?",
+      "answer": "A minimum of 50% marks in intermediate is required for admission (Fall 2026 admissions page).",
+      "category": "admissions",
+      "owner_name": "Admission Office",
+      "language": "en",
+      "status": "approved",
+      "last_verified": "2026-10-05",
+      "expires_at": null,
+      "source_url": null
+    },
+    {
+      "title": "Mathematics requirement for BS programs",
+      "question": "Is mathematics required for BS programs?",
+      "answer": "Mathematics is the basic eligibility requirement for BS programs. Students who did not study mathematics take 6 credit hours of deficiency courses.",
+      "category": "admissions",
+      "owner_name": "Admission Office",
+      "language": "en",
+      "status": "approved",
+      "last_verified": "2026-10-05",
+      "expires_at": null,
+      "source_url": null
+    },
+    {
+      "title": "Eligibility for Computer Science programs (F.A and I.Com)",
+      "question": "Can F.A or I.Com students apply for Computer Science programs?",
+      "answer": "Students with F.A or I.Com are not eligible for Computer Science programs.",
+      "category": "admissions",
+      "owner_name": "Admission Office",
+      "language": "en",
+      "status": "approved",
+      "last_verified": "2026-10-05",
+      "expires_at": null,
+      "source_url": null
+    },
+    {
+      "title": "Entry test",
+      "question": "How does the entry test work?",
+      "answer": "Entry tests are walk-in. Some programs need no entry test and admit students on merit.",
+      "category": "admissions",
+      "owner_name": "Admission Office",
+      "language": "en",
+      "status": "approved",
+      "last_verified": "2026-10-05",
+      "expires_at": null,
+      "source_url": null
+    },
+    {
+      "title": "Faculties at LGU",
+      "question": "Which faculties does LGU have?",
+      "answer": "LGU has four faculties: Social Sciences, Computer Sciences, Languages and Basic Sciences.",
+      "category": "other",
+      "owner_name": "LGU website",
+      "language": "en",
+      "status": "approved",
+      "last_verified": "2026-10-05",
+      "expires_at": null,
+      "source_url": null
+    },
+    {
+      "title": "Main campus address",
+      "question": "Where is the LGU main campus?",
+      "answer": "The LGU main campus is in Sector C, DHA Phase 6, Lahore.",
+      "category": "contacts",
+      "owner_name": "LGU website",
+      "language": "en",
+      "status": "approved",
+      "last_verified": "2026-10-05",
+      "expires_at": null,
+      "source_url": null
+    },
+    {
+      "title": "Published university policies",
+      "question": "Where can I find the university policies?",
+      "answer": "LGU publishes its policies as PDF documents on the Policies page of its website. They include the Student Handbook, the Admission Policy (Undergraduate and Graduate), the Undergraduate Education Policy, the Financial Assistance and Scholarship Policy, the Grievances Management Policy, the Hostel SOP and the Anti-Plagiarism Policy.",
+      "category": "policies",
+      "owner_name": "LGU website",
+      "language": "en",
+      "status": "approved",
+      "last_verified": "2026-10-05",
+      "expires_at": null,
+      "source_url": null
+    }
+  ]
 }

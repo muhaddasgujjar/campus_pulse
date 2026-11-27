@@ -17,7 +17,7 @@ Campus Pulse AI is a final year project (FYP) at Lahore Garrison University (LGU
 
 | # | Decision | Reason | Date |
 |---|---|---|---|
-| D1 | **No website scraping pipeline** | Breaks silently when layouts change, no owner for accuracy. Freshness comes from staff edits and a live-fetch tool | Oct 2026 |
+| D1 | **No website scraping pipeline** | Breaks silently when layouts change, no owner for accuracy. Freshness comes from staff edits and a live-fetch tool. **Amended 2026-10-05 (user):** a manual, one-time import of public lgu.edu.pk pages is allowed (`app/devtools/web_import.py`, robots.txt honoured, 1 request/s). Pages load as *pending* documents and are used only after a staff member approves each one (D6 unchanged). No scheduled scraper | Oct 2026 |
 | D2 | **No OCR model.** Image-only content is typed in by an admin | Out of the team's comfort zone, low value for the effort | Oct 2026 |
 | D3 | Structured data (timetable, faculty, fees, offices, key dates) is queried with **SQL tools**, not vector search | Exact answers | Oct 2026 |
 | D4 | Free text knowledge uses **RAG on PostgreSQL + pgvector** with hybrid search and rerank | Matches the proposal. One database | Oct 2026 |
@@ -30,7 +30,7 @@ Campus Pulse AI is a final year project (FYP) at Lahore Garrison University (LGU
 | D11 | **No private student records** (results, attendance, fee status, portal login). Profile is self-declared program, semester, section | Privacy and feasibility | Oct 2026 |
 | D12 | Model names, keys, thresholds live in env/config. Nothing hardcoded | Easy provider swaps | Oct 2026 |
 | D13 | Institution-specific text and data live in config and `seed/`, with `institution_id` on content tables | "Adaptable to other universities" promise | Oct 2026 |
-| D14 | **Free-only stack, no credit card:** Vercel Hobby (web), Render free (api, Docker), Supabase free, Upstash Redis free, Gemini API free tier, browser speech APIs, GitHub Actions. **No AWS.** Docker keeps the API AWS-ready | User decision: the team cannot pay for anything | Oct 2026 |
+| D14 | **Free-only stack, no credit card:** Vercel Hobby (web), Render free (api, Docker), Supabase free, Upstash Redis free, Gemini API free tier, browser speech APIs, GitHub Actions. **No AWS.** Docker keeps the API AWS-ready. **Amended 2026-10-05 (user):** Groq free tier is the first LLM provider (`LLM_PROVIDERS=groq,gemini,template`); Gemini stays for embeddings (Groq has none) and as LLM fallback. OpenAI (paid) deferred: needs a budget decision first | User decision: the team cannot pay for anything | Oct 2026 |
 | D15 | **LLM budget:** at most 2 LLM calls and 1 embedding call per turn. Rule-based language detection and redaction, deterministic grading, response cache, template answers for exact data, fake LLM in tests | Free Gemini quotas are small and unpublished | Oct 2026 |
 | D16 | **All data access goes through FastAPI.** Frontend uses Supabase only for Auth. RLS is on for every table with no policies (deny by default). Staff accounts are created by an admin through the Supabase Admin API. Students use anonymous sign-in | Single enforcement point for RBAC, no SMTP needed | Oct 2026 |
 | D17 | **Embeddings: `gemini-embedding-001` at 768 dimensions**, `vector(768)`. Changing it needs a migration and re-embed | Multilingual, free, small storage | Oct 2026 |
@@ -120,9 +120,9 @@ Milestones follow the proposal (M1 to M7). Tick items when done and add the date
 - [ ] **M6 Deployment and Hardening** (W15-16)
 - [ ] **M7 Testing and Final Delivery** (W17)
 
-**Current milestone:** M1
-**Current focus:** Repo scaffold done on branch `feat/M1-scaffold` (2026-10-05). Next: free accounts, free-limit recording, Gemini model IDs, Figma, 100 questions.
-**Blocked on:** Nothing technical. M1 exit needs the free accounts, the dev Supabase project and a first green CI run on GitHub.
+**Current milestone:** M2 (M1 code done; M1 accounts, limits and the 100 questions still open)
+**Current focus:** M2 code complete and pushed on branch `feat/M2-data-rag` (2026-11-27, no PR yet): schema, seeds, tools, ingestion, retrieval, agent, CLI, eval. Next: run the migration and seed on the dev Supabase project, run `make eval EVAL_ARGS="--live"` with a Gemini key, get faculty and timetable data from the offices.
+**Blocked on:** `DATABASE_URL` for `campus-pulse-dev` in `apps/api/.env` (to seed and import), a Groq key (live eval) and a Gemini key (embeddings). Staff review of the imported pages. Verified faculty and timetable data from the offices.
 
 **M1 scaffold checklist** (see `Phases.md` M1 for the full task list)
 - [x] Repo layout per `Architectural.md` Section 4, `CLAUDE.md`, README, Makefile, pre-commit, `.claude/` commands (2026-10-05)
@@ -133,21 +133,35 @@ Milestones follow the proposal (M1 to M7). Tick items when done and add the date
 - [ ] Free accounts created and limits recorded below
 - [ ] App runs against the dev Supabase project (`/readyz` shows `database: ok`)
 
+**M2 checklist** (see `Phases.md` M2)
+- [x] Migrations 0001 (all tables, RLS, HNSW/GIN, `hybrid_search`) and 0002 (`audit_log.created_at` = `clock_timestamp()`), verified on local Postgres 16 + pgvector (2026-10-05). Not yet run on Supabase
+- [x] Seed loader and `seed/lgu` with public-page facts (offices, fees, 1 key date, 7 KB entries). Faculty and timetable CSVs are still empty (2026-10-05)
+- [x] Structured tools, ingestion, hybrid retrieval, deterministic grader, minimal admin CLI (2026-10-05)
+- [x] LangGraph agent, Gemini adapter, provider chain, quota guard, response cache, templates, post-check (2026-10-05)
+- [x] Golden set v1 (68 items) and `make eval` (2026-10-05)
+- [x] Dev Supabase project `campus-pulse-dev` (ref `heeufaynwbuybceckjtf`, ap-south-1) created and migrated to head `9c4d2e7f1a86` (0001 to 0004) through the Supabase connector (2026-10-05). Not seeded yet
+- [x] Groq adapter (`LLM_PROVIDERS=groq,gemini,template`), per-provider quota guards (2026-10-05)
+- [x] One-time lgu.edu.pk import tool and `doc import-web` / `list` / `show` / `approve` (2026-10-05)
+- [ ] Seed and load the web snapshot into Supabase, approve pages, embed (needs DATABASE_URL in `.env` and a Gemini key)
+- [ ] Live eval with Groq (needs GROQ_API_KEY)
+
 **Free limits (record from each dashboard, with the date read)**
 | Service | Limit as shown in the dashboard | Date read |
 |---|---|---|
-| Supabase (dev, prod) | | |
+| Supabase (dev, prod) | Free plan: 2 active projects per org. Org `maiku` now holds `maiku` and `campus-pulse-dev`, so prod needs another org or a paused project | 2026-10-05 |
 | Render | | |
 | Vercel | | |
 | Upstash Redis | | |
 | Gemini (per model: RPM, TPM, RPD) | | |
+| Groq (free plan, docs page) | openai/gpt-oss-20b and gpt-oss-120b: 30 RPM, 1,000 RPD, 8K TPM, 200K TPD each. No embeddings API. Card requirement not stated on the page | 2026-10-05 |
 | GitHub Actions | | |
 | UptimeRobot | | |
 
 **Gemini model IDs chosen:** fast = (fill in) · main = (fill in)
+**Groq model IDs (defaults in `.env.example`):** fast = `openai/gpt-oss-20b` · main = `openai/gpt-oss-120b` · reasoning effort `low`
 
 **Pinned tool versions (2026-10-05, from PyPI and npm):** Python 3.12, uv 0.12.23, FastAPI 0.142.2, Pydantic 2.13.5, pydantic-settings 2.15.0, SQLAlchemy 2.1.3, Alembic 1.20.0, asyncpg 0.31.0, structlog 26.1.0, redis-py 8.1.0, pytest 9.1.1, ruff 0.16.10, mypy 2.4.0 · Node 24 LTS, npm (switched from pnpm 11: its downloads hung on this network), Next.js 16.3.8, React 19.2.8 (what create-next-app 16.3.8 selects), Tailwind 4.3.3, TypeScript 5.9.3, ESLint 9.39.5, Vitest 5.0.3, supabase-js 2.117.2. LangGraph, google-genai and supabase-py are added in M2/M5 when first used.
-**Golden set size:** 0 · **Latest eval score:** n/a
+**Golden set size:** 69 (v1, written from seed facts) · **Latest eval score:** 91% offline (63/69, 2026-11-27, no LLM, fake embedder): fallback 100%, invented numbers 0, exact data 93%. Live score: not run yet
 
 ## 8. Decisions Pending *(update)*
 
@@ -158,9 +172,12 @@ Milestones follow the proposal (M1 to M7). Tick items when done and add the date
 | Does Google AI Studio work from the team's accounts in Pakistan? Which Gemini model IDs (fast and main)? Record the free limits shown in AI Studio | Team | W1 |
 | Supervisors accept "Docker, AWS-ready, hosted on free tiers" instead of AWS in the proposal? Update the stack and architecture slides | Team and supervisor | W2 |
 | Live mode on browser speech (default) or the Gemini Live API if quota allows? | Team | W9 |
-| Redaction of stored messages: apply to user text only? Phone redaction would also hide office numbers in bot answers | Team | W3 (M2) |
+| Redaction of stored messages: apply to user text only? Phone redaction would also hide office numbers in bot answers. (M2 redacts user text before the LLM and in `unanswered_queries`; bot answers are not redacted) | Team | W3 (M2) |
+| Urdu answers without an LLM: templates are English only until a native speaker reviews Urdu templates (DESIGN.md Section 8). Who reviews? | Team | M3 |
 | Light theme values: DESIGN.md gives 4 light colors; the rest in `tokens.css` are placeholders. Confirm in Figma | Team | W2 |
 | Install Docker Desktop and GNU make on dev machines (needed for `make up` and the image size check) | Team | W1 |
+| OpenAI as a provider: needs a paid key, against D14 and rule 11. Revisit only with budget approval | Team and supervisor | Before M6 |
+| Supabase prod: create a second org (free) or pause `maiku`? | Team | M6 |
 | ESLint 9.39.5 is marked unsupported upstream, but eslint-plugin-react/import/jsx-a11y (used by eslint-config-next 16.3.8) only support ESLint up to 9. Upgrade to ESLint 10 when Next's config does | Team | Re-check each milestone |
 
 ## 9. Known Gotchas
@@ -176,6 +193,8 @@ Milestones follow the proposal (M1 to M7). Tick items when done and add the date
 - Gemini free-tier limits are not published. Read them in AI Studio for your project, and expect them to change.
 - Free-tier LLM data may be used by the provider. Redact personal data first.
 - Use the Supabase **pooler** connection strings (IPv4). The asyncpg statement cache must be disabled with the transaction pooler.
+- Groq: no embeddings API; structured outputs (`json_schema`) cannot stream; the 8K tokens-per-minute free limit is the real ceiling (about 3 to 4 turns a minute with planner + composer). Keep `GROQ_REASONING_EFFORT=low`.
+- The LGU site is WordPress: the page content is inside `<main id="main">` and fee tables are real HTML tables. The sitemap is `/wp-sitemap.xml`.
 - Supabase's built-in email sender is for testing only. Avoid flows that need email (staff accounts are admin-created, students are anonymous).
 - Voice APIs in the browser differ by device. Urdu voices and speech recognition quality vary, so test on real devices.
 
@@ -206,3 +225,17 @@ Template:
 - Tests: API ruff, mypy (strict), pytest 42 passed / 3 skipped (DB tests need DATABASE_URL) (pass). Live API: /healthz 200, /readyz 200 not_configured. API RSS about 93 MB with prod deps only. Web: eslint, tsc, vitest 6 passed, next build (4 static routes) all pass; hex-color lint rule verified; built pages serve 200. Docker image not built locally (Docker not installed); CI builds and probes it.
 - Next: push the branch and open a PR to see CI green; create free accounts; record limits and Gemini model IDs here; fill `.env` files locally; check `/readyz` against dev Supabase.
 - Questions for the user: see Section 8 (redaction scope, light theme values, Docker and make install).
+
+### 2026-10-05 · M2 · Data and RAG core
+- Done: three commits (migration + RLS + `hybrid_search` + seed loader; structured tools; ingestion, retrieval, grading, admin CLI), then the LangGraph agent: rule-based normalize and language detection, plan (LLM call 1, JSON, validated against the tool arg models, rule planner as fallback), structured tools, retrieval with one keyword-only retry, deterministic grader, compose (LLM call 2) or templates, post-check for invented numbers, fallback with office contact and `unanswered_queries`, response cache with `data_version`, `usage_daily`. Gemini adapter (google-genai), provider chain, quota guard (RPM and RPD, wait up to 20 s). `app/evaluation.py` with 68-item golden set v1; `make eval` runs it.
+- Fixes found while verifying: the retrieval retry made a second embedding call (D15 allows 1), now keyword only; plan JSON schema used OpenAPI `nullable`, now standard `anyOf` null; "Assalam o alaikum" and "Dr. <Name>" were not recognised; "main" made English questions look like Roman Urdu; one-word matches on two-word questions passed the grader (coverage 0.5 -> 0.6, tuned on the golden set); office misses now try the KB ("Where is the main campus?"); audit rows in one transaction shared a timestamp (flaky test), fixed with migration 0002.
+- Decisions: exact-data answers in English use templates (0 LLM calls) unless the user asks why/compare; non-English uses the LLM when available, else English templates. Failed LLM attempts count toward the budget (they may use quota). Eval runs offline by default and always rolls back its database changes.
+- Tests: pytest 219 passed (unit + Postgres integration on embedded pgserver), ruff and mypy strict clean. Eval offline 91% (62/68), fallback 100%, invented numbers 0. Remaining misses: 2 Urdu-script and 2 Roman Urdu items (need the LLM planner), 2 synonym questions ("maths", "BSCS" vs "Computer Science") that the lexical fake embedder cannot match.
+- Next: create the dev Supabase project and run `make migrate` and `make seed` there; get a Gemini key and model IDs, record limits, run `make eval EVAL_ARGS="--live"`; collect verified faculty, timetable and KB data; replace the golden set with the 100 collected student questions.
+- Questions for the user: who reviews Urdu templates; confirm redaction scope (Section 8).
+
+### 2026-11-27 · M2 · Health check, push, office-hours fix
+- Done: full check of the current state (ruff, mypy, pytest, eval, web lint/tsc/vitest/build, API endpoints). Committed the pending M2 work as three commits (migrations 0003-0004, Groq provider, website import) and pushed `feat/M2-data-rag`. Fixed "What are the office timings?" falling back: a `get_office` miss on a generic opening-hours question now lists every office's hours from the table (`asks_office_hours`, `all_offices`).
+- Tests: pytest 248 passed (pass). Eval offline 91% (63/69), new item g069 passes. Web checks and build pass.
+- Gotcha: the embedded pgserver data dir (`apps/api/.localdb`) was not shut down cleanly; crash recovery took about 40 s, over pgserver's 10 s start timeout, so the first eval run failed with `TimeoutExpired`. Rerunning works.
+- Next: open the M2 pull request so CI runs; add DATABASE_URL, GEMINI_API_KEY and GROQ_API_KEY to `apps/api/.env` (by hand), then seed, approve pages and run the live eval; start M3.

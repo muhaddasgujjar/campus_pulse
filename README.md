@@ -4,7 +4,7 @@ A WhatsApp-style chat, with voice messages and a live voice mode, that answers L
 
 Final year project, LGU Department of Computer Science. Docs: [`docs/`](docs/) (start with [`docs/Memory.md`](docs/Memory.md)).
 
-> **Status:** milestone M1 (scaffold). The chat, agent, voice and admin features are built in M2 to M5. See [`docs/Phases.md`](docs/Phases.md).
+> **Status:** milestone M2 (data and RAG core): schema, seed import, structured tools, ingestion, hybrid retrieval, the LangGraph agent, a minimal admin CLI and the golden-set evaluation. The chat UI, voice and admin portal come in M3 to M5. See [`docs/Phases.md`](docs/Phases.md).
 
 ## Free stack (Rs 0 per month, no credit card)
 
@@ -64,8 +64,32 @@ Tests need no cloud services. Database tests run only when `DATABASE_URL` is set
 | `make lint` / `fmt` / `typecheck` | ruff + eslint / auto-fix / mypy + tsc |
 | `make test` | pytest + vitest |
 | `make build-web` / `docker-api` | Next.js production build / API image with its size |
-| `make migrate` / `seed` | Stubs until M2 (Alembic, seed import) |
-| `make eval` | Golden-set metrics (placeholders until M2) |
+| `make migrate` | Alembic migrations on `DATABASE_URL_MIGRATIONS` (Supabase session pooler) |
+| `make seed` | Load `seed/lgu` (idempotent). Uses `DATABASE_URL`, else a local embedded Postgres |
+| `make eval` | Golden-set evaluation, offline (no LLM, fake embedder). `make eval EVAL_ARGS="--live"` uses the configured Gemini models and counts against the free quota |
+
+## Minimal admin path (until the M5 portal)
+
+Run from `apps/api` with `uv run python -m app.cli <command>` (`--help` on each). Every write adds an `audit_log` row.
+
+| Command | What it does |
+|---|---|
+| `seed ../../seed/lgu` | Load the seed folder and index the KB entries |
+| `kb list` / `kb add` / `kb submit` / `kb approve` / `kb reject` / `kb archive` | Knowledge entries with the approval workflow (approve re-embeds) |
+| `import timetable FILE` / `import faculty FILE` | CSV import (dry run unless `--commit`) |
+| `doc upload FILE.pdf` | Text PDF: extract the text into a pending document |
+| `doc import-web SNAPSHOT.json` | Load a website snapshot as pending documents (unchanged pages skipped, changed pages back to pending) |
+| `doc list [--status pending] [--category fees]` / `doc show ID` | Review documents and their text |
+| `doc approve ID [ID ...] [--verified YYYY-MM-DD]` | Approve, then chunk and embed (only approved content is used for answers) |
+| `reindex` | Re-chunk and re-embed all approved content |
+
+### One-time website import (D1 note)
+
+`uv run python -m app.devtools.web_import ../../seed/lgu` reads the student-facing pages of the hosts in `institution.json` (`live_fetch_allowlist`) from the WordPress sitemap, honours robots.txt, waits 1 s between requests and writes `seed/lgu/web/lgu_website_<date>.json`. Load it with `doc import-web`. Every page stays **pending** until a staff member checks it with the office and runs `doc approve`. Run it by hand only: there is no scheduled scraper.
+
+## Evaluation
+
+`eval/golden.jsonl` holds the questions (`question`, `expected_facts`, `expected_tool`, `should_fallback`). The runner ([`apps/api/app/evaluation.py`](apps/api/app/evaluation.py)) loads `seed/lgu` inside a transaction that is always rolled back, runs every question through the real agent and prints the PRD metrics and every failure. Options: `--today YYYY-MM-DD` (pin the date), `--json eval/results/<name>.json` (full report, gitignored), `--min-accuracy 0.8` (exit 1 below it).
 
 ## Environment variables
 
@@ -87,10 +111,17 @@ Templates: [`apps/api/.env.example`](apps/api/.env.example) and [`apps/web/.env.
 | `SUPABASE_JWT_SECRET` | api | **yes** | Verify Supabase tokens (M5) |
 | `REDIS_URL` | api | **yes** | Upstash Redis TLS URL |
 | `GEMINI_API_KEY` | api | **yes** | Google AI Studio key |
-| `LLM_PROVIDERS` | api | no | Fallback chain, e.g. `gemini,template` |
+| `LLM_PROVIDERS` | api | no | Fallback chain, e.g. `groq,gemini,template` |
 | `LLM_MODEL_FAST` / `LLM_MODEL_MAIN` | api | no | Gemini model IDs from AI Studio (no defaults in code) |
 | `EMBEDDING_MODEL` / `EMBEDDING_DIM` | api | no | `gemini-embedding-001` / `768` (D17) |
 | `MAX_LLM_CALLS_PER_TURN` | api | no | LLM budget, at most 2 (COST-2) |
+| `LLM_TIMEOUT_SECONDS` | api | no | Abandon an LLM request after this many seconds |
+| `GROQ_API_KEY` | api | **yes** | Groq key (free tier, LLM only) |
+| `GROQ_MODEL_FAST` / `GROQ_MODEL_MAIN` / `GROQ_REASONING_EFFORT` | api | no | Groq model IDs and gpt-oss reasoning effort |
+| `GEMINI_RPM_LIMIT` / `GEMINI_RPD_LIMIT` / `GROQ_RPM_LIMIT` / `GROQ_RPD_LIMIT` | api | no | Per-provider quota guard, copied from each dashboard (empty = none) |
+| `QUOTA_MAX_WAIT_SECONDS` | api | no | Wait near the per-minute limit before the busy fallback |
+| `RESPONSE_CACHE_TTL_SECONDS` | api | no | Response cache lifetime, 0 = off |
+| `RETRIEVAL_*` | api | no | Retrieval and grading thresholds, tuned with `make eval` |
 | `INTERNAL_JOBS_SECRET` | api | **yes** | Header secret for `/internal/jobs/daily` |
 | `CHAT_RETENTION_DAYS` | api | no | Message retention, default 60 |
 | `NEXT_PUBLIC_API_URL` | web | no | API base URL |

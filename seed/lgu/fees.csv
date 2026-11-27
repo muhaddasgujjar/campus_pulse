@@ -1,1 +1,3 @@
-program_group,level,fiscal_year,admission_fee,tuition_per_credit_hour,misc_per_semester,credit_hours_sem1,notes,last_verified,source_url,verified_by
+program_group,level,fiscal_year,admission_fee,tuition_per_credit_hour,misc_per_semester,credit_hours_sem1,notes,last_verified,source_name
+"Faculty of Computer Sciences (BSCS, BSSE, BSIT, BSDS, BSAI, BS CySec)",Undergraduate,2026-27,17500,7744,6360,,About 18 credit hours in semester 1.,2026-10-05,"LGU website, Fee Structure page (read 2026-10-05, confirm with office)"
+BBA,Undergraduate,2026-27,,7392,5360,,,2026-10-05,"LGU website, Fee Structure page (read 2026-10-05, confirm with office)"

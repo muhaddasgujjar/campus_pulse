@@ -54,7 +54,7 @@ class Settings(BaseSettings):
     # --- redis (Upstash) ---
     redis_url: str | None = None
 
-    # --- LLM (Gemini free tier, D15) ---
+    # --- LLM: Gemini free tier (D15). LLM_MODEL_FAST/MAIN are the Gemini model IDs ---
     gemini_api_key: SecretStr | None = None
     llm_providers: Annotated[list[str], NoDecode] = Field(default_factory=lambda: ["template"])
     llm_model_fast: str | None = None
@@ -62,6 +62,33 @@ class Settings(BaseSettings):
     embedding_model: str | None = None
     embedding_dim: int = Field(default=768, gt=0)  # D17: vector(768)
     max_llm_calls_per_turn: int = Field(default=2, ge=0, le=2)  # COST-2
+    embedding_batch_size: int = Field(default=16, ge=1, le=100)
+    llm_timeout_seconds: float = Field(default=25, gt=0)
+
+    # --- Groq (free tier, OpenAI-compatible). LLM only: Groq has no embeddings API ---
+    groq_api_key: SecretStr | None = None
+    groq_model_fast: str | None = None
+    groq_model_main: str | None = None
+    groq_reasoning_effort: str | None = None  # gpt-oss models: low | medium | high
+
+    # --- quota guard per provider (COST-4). Copy the limits from each dashboard.
+    # Empty = no local limit (the provider's 429 is still handled).
+    gemini_rpm_limit: int | None = Field(default=None, ge=1)
+    gemini_rpd_limit: int | None = Field(default=None, ge=1)
+    groq_rpm_limit: int | None = Field(default=None, ge=1)
+    groq_rpd_limit: int | None = Field(default=None, ge=1)
+    quota_max_wait_seconds: float = Field(default=20, ge=0, le=60)
+
+    # --- response cache (COST-3). In process now, Redis with data_version in M3.
+    response_cache_ttl_seconds: int = Field(default=3600, ge=0)
+
+    # --- retrieval and grading (tune on the golden set, Architectural.md Section 6) ---
+    retrieval_top_k: int = Field(default=5, ge=1, le=20)
+    retrieval_min_similarity: float = Field(default=0.62, ge=0, le=1)
+    retrieval_min_keyword_coverage: float = Field(default=0.6, ge=0, le=1)
+
+    # --- ingestion limits (Architectural.md Section 7) ---
+    pdf_max_mb: int = Field(default=10, ge=1, le=50)
 
     # --- ops ---
     internal_jobs_secret: SecretStr | None = None
@@ -84,6 +111,14 @@ class Settings(BaseSettings):
         "supabase_jwt_secret",
         "gemini_api_key",
         "internal_jobs_secret",
+        "groq_api_key",
+        "groq_model_fast",
+        "groq_model_main",
+        "groq_reasoning_effort",
+        "gemini_rpm_limit",
+        "gemini_rpd_limit",
+        "groq_rpm_limit",
+        "groq_rpd_limit",
         mode="before",
     )
     @classmethod

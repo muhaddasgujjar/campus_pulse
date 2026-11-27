@@ -31,14 +31,25 @@ class LLMProvider(Protocol):
         prompt: str,
         model_tier: ModelTier,
         json_schema: dict[str, Any] | None = None,
+        system: str | None = None,
     ) -> LLMResult:
         """Single completion. With `json_schema`, `LLMResult.json` holds the parsed object."""
         ...
 
-    def stream(self, prompt: str, model_tier: ModelTier) -> AsyncIterator[str]:
-        """Stream text tokens (used by the compose node over the WebSocket)."""
+    def stream(
+        self, prompt: str, model_tier: ModelTier, system: str | None = None
+    ) -> AsyncIterator[str]:
+        """Stream text tokens (used by the compose node over the WebSocket in M3)."""
         ...
 
 
 class LLMProviderError(RuntimeError):
-    """Provider failed or is out of quota. The agent falls back to the next provider."""
+    """Provider failed. The router tries the next provider; the agent then uses templates."""
+
+
+class LLMQuotaError(LLMProviderError):
+    """Rate or daily quota reached (HTTP 429 or the local quota guard)."""
+
+
+class LLMBudgetError(LLMProviderError):
+    """This turn already used its LLM calls (COST-2: at most 2 per turn)."""

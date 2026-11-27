@@ -67,15 +67,14 @@ docker-api: ## Build the API image and print its size
 	docker build -f infra/Dockerfile -t campus-pulse-api:local $(API)
 	docker image ls campus-pulse-api:local
 
-migrate: ## (stub until M2) Run Alembic migrations against DATABASE_URL_MIGRATIONS
-	@echo "migrate: no migrations yet. M2 adds them; this target will run:"
-	@echo "  cd $(API) && $(UV) run alembic upgrade head"
+migrate: ## Run Alembic migrations against DATABASE_URL_MIGRATIONS (Supabase session pooler)
+	cd $(API) && $(UV) run alembic upgrade head
 
-seed: ## (stub until M2) Load seed/lgu into the dev database
-	@echo "seed: seed import scripts arrive in M2 (seed/lgu holds header-only templates)."
+seed: ## Load seed/lgu (idempotent). Uses DATABASE_URL, else a local pgserver database
+	cd $(API) && $(UV) run python -m app.cli seed ../../seed/lgu
 
-eval: ## Run the golden-set evaluation (stub metrics until M2)
-	$(PYTHON) eval/run.py
+eval: ## Golden-set evaluation, offline (no LLM, fake embedder). EVAL_ARGS="--live" uses real providers
+	cd $(API) && $(UV) run python -m app.evaluation ../../eval/golden.jsonl $(EVAL_ARGS)
 
 web-dev: ## Next.js dev server on http://localhost:3000
 	cd $(WEB) && $(NPM) run dev
