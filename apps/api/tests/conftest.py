@@ -57,7 +57,7 @@ def db_url(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
     logging.getLogger("pgserver").setLevel(logging.WARNING)
     server = pgserver.get_server(str(tmp_path_factory.mktemp("pg")), cleanup_mode="stop")
     server.psql("create database campus_pulse_test;")
-    url = server.get_uri().rsplit("/", 1)[0] + "/campus_pulse_test"
+    url = server.get_uri(database="campus_pulse_test")  # TCP on Windows, a socket elsewhere
     migrate(url)
     try:
         yield url
