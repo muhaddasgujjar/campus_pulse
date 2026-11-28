@@ -569,3 +569,60 @@ async def test_document_submit_and_archive(api: httpx.AsyncClient, people: Peopl
     )
     assert archived.status_code == 200, archived.text
     assert archived.json()["status"] == "archived"
+
+
+# --- Word (.docx) uploads (DATA-3) ------------------------------------------------------------
+
+DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+
+async def test_a_word_file_is_previewed_uploaded_approved_and_answered(
+    api: httpx.AsyncClient, people: People, services: ChatServices
+) -> None:
+    from tests.support.docx import make_docx, paragraph, table
+
+    body = paragraph("Hostel SOP for the Girls Hostel") + paragraph(
+        "The girls hostel warden office is in Block H, room 4, open 09:00 to 17:00."
+    ) + table([["Item", "Charge"], ["Hostel security deposit", "Rs 10,000"]])  # fmt: skip
+    data = make_docx(body)
+    headers = {**people.headers("staff"), "Content-Type": DOCX_MIME}
+
+    preview = await api.post("/api/admin/documents/preview", content=data, headers=headers)
+    assert preview.status_code == 200, preview.text
+    assert preview.json()["pages"] is None and preview.json()["chunks"] >= 1
+    assert "Hostel security deposit | Rs 10,000" in preview.json()["text_preview"]
+
+    uploaded = await api.post(
+        "/api/admin/documents",
+        params={"title": "Girls Hostel SOP", "category": "hostel", "last_verified": "2026-11-01",
+                "expires_at": "2027-11-01"},
+        content=data,
+        headers=headers,
+    )  # fmt: skip
+    assert uploaded.status_code == 201, uploaded.text
+    assert uploaded.json()["mime"] == DOCX_MIME and uploaded.json()["status"] == "pending"
+
+    approved = await api.post(
+        f"/api/admin/approvals/document/{uploaded.json()['id']}/approve",
+        headers=people.headers("admin"),
+    )
+    assert approved.status_code == 200 and approved.json()["chunks"] >= 1
+    events = await turn(services, "Where is the girls hostel warden office?")
+    titles = [s["title"] for e in events.of("sources") for s in e["items"]]
+    assert "Girls Hostel SOP" in titles
+    assert "Block H" in events.text()
+
+
+@pytest.mark.parametrize(
+    ("content_type", "status"),
+    [("text/plain", 415), ("application/msword", 415), (DOCX_MIME, 422)],
+)
+async def test_unsupported_or_broken_uploads_are_refused(
+    api: httpx.AsyncClient, people: People, content_type: str, status: int
+) -> None:
+    response = await api.post(
+        "/api/admin/documents/preview",
+        content=b"definitely not a document",
+        headers={**people.headers("staff"), "Content-Type": content_type},
+    )
+    assert response.status_code == status, response.text

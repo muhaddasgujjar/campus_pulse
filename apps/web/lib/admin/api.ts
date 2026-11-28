@@ -149,7 +149,19 @@ export type DocumentRow = {
   can_edit: boolean;
 };
 
-export type PdfPreview = { pages: number; characters: number; chunks: number; text_preview: string };
+export type PdfPreview = { pages: number | null; characters: number; chunks: number; text_preview: string };
+
+/** Accepted uploads (DATA-3): text PDFs and Word (.docx). The server checks the file again. */
+export const PDF_MIME = "application/pdf";
+export const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+/** The upload type from the file name (some browsers leave File.type empty for .docx). */
+export function uploadType(file: File): string | null {
+  const name = file.name.toLowerCase();
+  if (name.endsWith(".pdf")) return PDF_MIME;
+  if (name.endsWith(".docx")) return DOCX_MIME;
+  return null;
+}
 
 export type Approval = {
   kind: "kb" | "document";
@@ -265,14 +277,11 @@ export const adminApi = {
 
   documents: (query: { status?: Status | ""; q?: string } = {}) =>
     api<DocumentRow[]>("/api/admin/documents", { query }),
-  previewPdf: (file: Blob) =>
-    api<PdfPreview>("/api/admin/documents/preview", {
-      method: "POST",
-      body: file,
-      contentType: "application/pdf",
-    }),
-  uploadPdf: (
+  previewUpload: (file: Blob, contentType: string) =>
+    api<PdfPreview>("/api/admin/documents/preview", { method: "POST", body: file, contentType }),
+  uploadDocument: (
     file: Blob,
+    contentType: string,
     meta: {
       title: string;
       category: string;
@@ -283,12 +292,7 @@ export const adminApi = {
       office_id?: string | null;
     },
   ) =>
-    api<DocumentRow>("/api/admin/documents", {
-      method: "POST",
-      body: file,
-      contentType: "application/pdf",
-      query: meta,
-    }),
+    api<DocumentRow>("/api/admin/documents", { method: "POST", body: file, contentType, query: meta }),
   submitDocument: (id: string) =>
     api<DocumentRow>(`/api/admin/documents/${id}/submit`, { method: "POST" }),
   archiveDocument: (id: string) =>

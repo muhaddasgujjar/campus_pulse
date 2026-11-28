@@ -23,8 +23,8 @@ from app.services import content_admin as content
 from app.services.chat import ChatServices
 from app.services.chunking import chunk_text
 from app.services.content_admin import Actor, ContentError
-from app.services.pdf import PdfRejectedError, extract_pdf_text
 from app.services.seeding import KbEntryRow
+from app.services.uploads import ACCEPTED, UploadRejectedError, extract_upload
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 Services = Annotated[ChatServices, Depends(chat_services)]
@@ -286,7 +286,7 @@ class DocumentOut(BaseModel):
 
 
 class PdfPreview(BaseModel):
-    pages: int
+    pages: int | None  # None for Word files
     characters: int
     chunks: int
     text_preview: str
@@ -312,22 +312,25 @@ async def list_documents(
     return [DocumentOut.of(d, user) for d in rows.scalars()]
 
 
-async def _read_pdf(request: Request, services: ChatServices) -> bytes:
+async def _read_upload(request: Request, services: ChatServices) -> tuple[bytes, str]:
+    """The raw body and its declared type: a text PDF or a Word (.docx) file (DATA-3)."""
+    content_type = (request.headers.get("content-type") or "").split(";")[0].strip().lower()
+    if content_type not in ACCEPTED:
+        raise HTTPException(
+            status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "Upload a PDF or Word (.docx) file."
+        )
     max_mb = services.settings.pdf_max_mb
-    body = await read_capped(request, max_mb * 1024 * 1024, f"PDF larger than {max_mb} MB")
-    content_type = (request.headers.get("content-type") or "").split(";")[0].strip()
-    if content_type != "application/pdf":
-        raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "upload a PDF file")
-    return body
+    body = await read_capped(request, max_mb * 1024 * 1024, f"File larger than {max_mb} MB")
+    return body, content_type
 
 
 @router.post("/documents/preview", response_model=PdfPreview)
 async def preview_document(request: Request, user: StaffUser, services: Services) -> PdfPreview:
     """Extract the text and count the chunks without saving anything (DESIGN 6.2.5)."""
-    pdf = await _read_pdf(request, services)
+    data, content_type = await _read_upload(request, services)
     try:
-        extracted = extract_pdf_text(pdf, services.settings.pdf_max_mb)
-    except PdfRejectedError as exc:
+        extracted = extract_upload(data, content_type, services.settings.pdf_max_mb)
+    except UploadRejectedError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
     return PdfPreview(
         pages=extracted.pages,
@@ -351,7 +354,7 @@ async def upload_document(
     department_id: uuid.UUID | None = None,
     office_id: uuid.UUID | None = None,
 ) -> DocumentOut:
-    """The raw PDF is the body; metadata in the query (no multipart, like voice uploads).
+    """The raw PDF or .docx is the body; metadata in the query (no multipart, like voice).
     The document is pending until an admin approves it; only then is it chunked and embedded."""
     if expires_at <= last_verified:
         raise HTTPException(
@@ -359,16 +362,16 @@ async def upload_document(
         )
     department_id, office_id = default_scope(user, department_id, office_id)
     ensure_scope(user, department_id, office_id)
-    pdf = await _read_pdf(request, services)
+    data, content_type = await _read_upload(request, services)
     async with session.begin():
         try:
             doc = await content.upload_document(
-                session, user.institution_id, pdf, title=title.strip(), category=category.strip(),
+                session, user.institution_id, data, title=title.strip(), category=category.strip(),
                 owner_name=owner_name, last_verified=last_verified, expires_at=expires_at,
                 max_mb=services.settings.pdf_max_mb, actor=actor(user),
-                department_id=department_id, office_id=office_id,
+                department_id=department_id, office_id=office_id, content_type=content_type,
             )  # fmt: skip
-        except PdfRejectedError as exc:
+        except UploadRejectedError as exc:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
     return DocumentOut.of(doc, user)
 

@@ -33,8 +33,8 @@ from app.services import content_admin as admin
 from app.services import users
 from app.services.embeddings import build_embedder
 from app.services.ingestion import index_entry
-from app.services.pdf import PdfRejectedError
 from app.services.seeding import KbEntryRow, load_seed_dir
+from app.services.uploads import EXTENSIONS, UploadRejectedError
 
 Command = Callable[[AsyncSession, argparse.Namespace], Awaitable[int]]
 
@@ -170,10 +170,14 @@ async def cmd_import(session: AsyncSession, args: argparse.Namespace) -> int:
 
 async def cmd_doc_upload(session: AsyncSession, args: argparse.Namespace) -> int:
     settings = get_settings()
+    path = Path(args.file)
+    content_type = EXTENSIONS.get(path.suffix.lower())
+    if content_type is None:
+        raise UploadRejectedError("Upload a PDF or Word (.docx) file.")
     document = await admin.upload_document(
         session,
         await _institution(session),
-        await asyncio.to_thread(Path(args.pdf).read_bytes),
+        await asyncio.to_thread(path.read_bytes),
         title=args.title,
         category=args.category,
         owner_name=args.owner,
@@ -181,6 +185,7 @@ async def cmd_doc_upload(session: AsyncSession, args: argparse.Namespace) -> int
         expires_at=args.expires,
         max_mb=settings.pdf_max_mb,
         actor=actor(),
+        content_type=content_type,
     )
     preview = document.content[:400].replace("\n", " ")
     print(f"Uploaded pending document {document.id} ({len(document.content)} characters)")
@@ -342,11 +347,11 @@ def build_parser() -> argparse.ArgumentParser:
     imp.add_argument("--commit", action="store_true")
     imp.set_defaults(func=cmd_import)
 
-    doc = sub.add_parser("doc", help="Documents: text PDFs and imported web pages").add_subparsers(
-        dest="doc_command", required=True
-    )
+    doc = sub.add_parser(
+        "doc", help="Documents: text PDFs, Word files and imported web pages"
+    ).add_subparsers(dest="doc_command", required=True)
     upload = doc.add_parser("upload", help="Extract text and create a pending document")
-    upload.add_argument("pdf")
+    upload.add_argument("file", help="a text PDF or a Word (.docx) file")
     upload.add_argument("--title", required=True)
     upload.add_argument("--category", required=True)
     upload.add_argument("--owner")
@@ -394,7 +399,7 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         return asyncio.run(_run(args.func, args))
-    except (admin.ContentError, PdfRejectedError, ValueError) as exc:
+    except (admin.ContentError, UploadRejectedError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 

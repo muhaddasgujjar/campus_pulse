@@ -73,7 +73,7 @@ Tests need no cloud services. Database tests run only when `DATABASE_URL` is set
 
 ## Admin portal (M5)
 
-Open http://localhost:3000/admin. Staff edit content of their own office or department and submit it; an admin approves it, and the chat answers from it within seconds (approval re-embeds at once). Every change is in the audit log.
+Open http://localhost:3000/admin. Staff edit content of their own office or department, or upload a text PDF or Word (.docx) file, and submit it; an admin approves it, and the chat answers from it within seconds (approval re-embeds at once). Every change is in the audit log.
 
 **Sign-in.**
 - **Cloud (dev, prod):** Supabase Auth in the browser. Staff and admins use email and password; their accounts are created by an admin in **Users** (Supabase Admin API, email pre-confirmed, so no email is sent). Students use anonymous sign-in only when they open their profile. The API verifies the Supabase token (JWKS for the new signing keys, `SUPABASE_JWT_SECRET` for legacy HS256) and reads the role from `profiles`, never from the token.
@@ -91,7 +91,7 @@ Run from `apps/api` with `uv run python -m app.cli <command>` (`--help` on each)
 | `seed ../../seed/lgu` | Load the seed folder and index the KB entries |
 | `kb list` / `kb add` / `kb submit` / `kb approve` / `kb reject` / `kb archive` | Knowledge entries with the approval workflow (approve re-embeds) |
 | `import timetable FILE` / `import faculty FILE` | CSV import (dry run unless `--commit`) |
-| `doc upload FILE.pdf` | Text PDF: extract the text into a pending document |
+| `doc upload FILE.pdf\|FILE.docx` | Text PDF or Word file: extract the text into a pending document |
 | `doc import-web SNAPSHOT.json` | Load a website snapshot as pending documents (unchanged pages skipped, changed pages back to pending) |
 | `doc list [--status pending] [--category fees]` / `doc show ID` | Review documents and their text |
 | `doc approve ID [ID ...] [--verified YYYY-MM-DD]` | Approve, then chunk and embed (only approved content is used for answers) |

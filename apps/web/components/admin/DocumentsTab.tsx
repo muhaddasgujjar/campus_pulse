@@ -21,17 +21,18 @@ import {
   Table,
   todayIso,
 } from "@/components/admin/ui";
-import { adminApi, type DocumentRow, type PdfPreview } from "@/lib/admin/api";
+import { adminApi, DOCX_MIME, type DocumentRow, type PdfPreview, uploadType } from "@/lib/admin/api";
 
 const MAX_MB = 10;
 
-/** Document upload (DESIGN.md 6.2.5): drop a text PDF, see the extracted text, add metadata. */
+/** Document upload (DESIGN.md 6.2.5): drop a text PDF or Word file, see the extracted text, add metadata. */
 function UploadDialog({ onClose, onDone }: { onClose: () => void; onDone: (title: string) => void }) {
   const { me } = useAdmin();
   const today = todayIso();
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<PdfPreview | null>(null);
   const [title, setTitle] = useState("");
+  const [autoTitle, setAutoTitle] = useState(""); // the title last filled in from a file name
   const [category, setCategory] = useState("policies");
   const [verified, setVerified] = useState(today);
   const [expires, setExpires] = useState(`${Number(today.slice(0, 4)) + 1}${today.slice(4)}`);
@@ -44,13 +45,19 @@ function UploadDialog({ onClose, onDone }: { onClose: () => void; onDone: (title
     setError(null);
     setPreview(null);
     if (!picked) return;
-    if (picked.type !== "application/pdf") return setError("Choose a PDF file.");
-    if (picked.size > MAX_MB * 1024 * 1024) return setError(`The PDF is larger than ${MAX_MB} MB.`);
+    const type = uploadType(picked);
+    if (!type) return setError("Choose a PDF or Word (.docx) file. Old .doc files: save them as .docx first.");
+    if (picked.size > MAX_MB * 1024 * 1024) return setError(`The file is larger than ${MAX_MB} MB.`);
     setFile(picked);
-    setTitle((t) => t || picked.name.replace(/\.pdf$/i, ""));
     setBusy(true);
     try {
-      setPreview(await adminApi.previewPdf(picked));
+      setPreview(await adminApi.previewUpload(picked, type));
+      // Fill the title from the file name, unless the user typed their own.
+      const fromName = picked.name.replace(/\.(pdf|docx)$/i, "");
+      if (!title || title === autoTitle) {
+        setTitle(fromName);
+        setAutoTitle(fromName);
+      }
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -60,11 +67,12 @@ function UploadDialog({ onClose, onDone }: { onClose: () => void; onDone: (title
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (!file) return;
+    const type = file ? uploadType(file) : null;
+    if (!file || !type) return;
     setBusy(true);
     setError(null);
     try {
-      const doc = await adminApi.uploadPdf(file, {
+      const doc = await adminApi.uploadDocument(file, type, {
         title,
         category,
         last_verified: verified,
@@ -86,7 +94,7 @@ function UploadDialog({ onClose, onDone }: { onClose: () => void; onDone: (title
   };
 
   return (
-    <Dialog title="Upload a PDF" onClose={onClose}>
+    <Dialog title="Upload a document" onClose={onClose}>
       <form onSubmit={submit} className="flex flex-col gap-4">
         <label
           onDragOver={(e) => {
@@ -100,14 +108,18 @@ function UploadDialog({ onClose, onDone }: { onClose: () => void; onDone: (title
           }`}
         >
           <FileUp size={28} className="text-accent" aria-hidden="true" />
-          {file ? file.name : "Drop a PDF here or choose a file"}
-          <span className="text-xs text-muted">Text PDFs only, up to {MAX_MB} MB. Scanned images can&apos;t be read.</span>
-          <input type="file" accept="application/pdf" className="sr-only" onChange={(e) => void choose(e.target.files?.[0])} />
+          {file ? file.name : "Drop a PDF or Word file here, or choose one"}
+          <span className="text-xs text-muted">
+            Text PDFs or Word (.docx), up to {MAX_MB} MB. Scanned pages and pictures of text can&apos;t be read.
+          </span>
+          <input type="file" accept={`.pdf,application/pdf,.docx,${DOCX_MIME}`} className="sr-only" onChange={(e) => void choose(e.target.files?.[0])} />
         </label>
         {preview ? (
           <div className="rounded-(--radius-sm) border border-border bg-surface-2 p-3 text-xs">
             <p className="mb-2 font-semibold">
-              {preview.pages} pages · {preview.characters.toLocaleString()} characters · {preview.chunks} chunks for search
+              {preview.pages !== null ? `${preview.pages} pages · ` : ""}
+              {preview.characters.toLocaleString()} characters · {preview.chunks}{" "}
+              {preview.chunks === 1 ? "chunk" : "chunks"} for search
             </p>
             <pre className="max-h-40 overflow-y-auto whitespace-pre-wrap text-muted">{preview.text_preview}</pre>
           </div>
@@ -172,7 +184,7 @@ export function DocumentsTab() {
     <>
       <div className="mb-4 flex justify-end">
         <Button tone="primary" onClick={() => setUploading(true)}>
-          <Upload size={16} aria-hidden="true" /> Upload PDF
+          <Upload size={16} aria-hidden="true" /> Upload document
         </Button>
       </div>
       {error ? <Notice tone="error">{error}</Notice> : null}

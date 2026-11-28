@@ -154,3 +154,13 @@ describe("structured table forms", () => {
     expect(cellText("email", null)).toBe("—");
   });
 });
+
+describe("upload types", () => {
+  it("accepts PDF and Word by file name, even when the browser gives no type", async () => {
+    const { uploadType, PDF_MIME, DOCX_MIME } = await import("@/lib/admin/api");
+    expect(uploadType(new File(["x"], "Hostel SOP.PDF"))).toBe(PDF_MIME);
+    expect(uploadType(new File(["x"], "policy.docx", { type: "" }))).toBe(DOCX_MIME);
+    expect(uploadType(new File(["x"], "old.doc"))).toBeNull();
+    expect(uploadType(new File(["x"], "notes.txt"))).toBeNull();
+  });
+});

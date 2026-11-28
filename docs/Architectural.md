@@ -334,7 +334,7 @@ The server sees text only, so live mode costs no extra server resources. The Gem
 - The Supabase **service role key and database URL exist only on the server**. The frontend gets only the public URL and anon key, which can access nothing because of deny-by-default RLS.
 - Staff accounts are created by an admin through the Supabase Admin API with the email already confirmed, so no email sending is needed.
 - Parameterized queries only. The LLM never produces SQL.
-- File upload checks: type, size, magic bytes, text extraction only, no execution.
+- File upload checks: type, size, magic bytes, text extraction only, no execution. Accepted: text PDFs (pypdf) and Word .docx (standard-library zip + XML: no macros, no DOCTYPE or entities, unpacked size capped against zip bombs; old .doc and password-protected files refused).
 - Live fetch: allowlist of hosts, no redirects off the allowlist, response size cap, HTML to text only.
 - Prompt-injection defense: retrieved text is wrapped as data, tests include hostile entries.
 - CORS locked to the Vercel origin. Security headers. Secrets only in Render and Vercel environment variables and GitHub secrets.

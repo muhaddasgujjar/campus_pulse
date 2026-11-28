@@ -24,8 +24,8 @@ from app.db.repositories.upsert import UpsertStats, upsert
 from app.services import audit
 from app.services.embeddings import Embedder
 from app.services.ingestion import IndexResult, index_document, index_entry
-from app.services.pdf import extract_pdf_text
 from app.services.seeding import FacultyRow, KbEntryRow, SeedRow, TimetableRow, read_csv
+from app.services.uploads import PDF_MIME, extract_upload
 
 
 class ContentError(ValueError):
@@ -189,7 +189,7 @@ async def archive_entry(session: AsyncSession, entry_id: uuid.UUID, actor: Actor
 async def upload_document(
     session: AsyncSession,
     institution_id: uuid.UUID,
-    pdf_bytes: bytes,
+    file_bytes: bytes,
     *,
     title: str,
     category: str,
@@ -200,9 +200,12 @@ async def upload_document(
     actor: Actor,
     department_id: uuid.UUID | None = None,
     office_id: uuid.UUID | None = None,
+    content_type: str = PDF_MIME,
 ) -> Document:
-    extracted = extract_pdf_text(pdf_bytes, max_mb)  # raises PdfRejectedError
+    """A text PDF or Word (.docx) file becomes a pending document (DATA-3)."""
+    extracted = extract_upload(file_bytes, content_type, max_mb)  # raises UploadRejectedError
     document = Document(
+        mime=content_type,
         institution_id=institution_id,
         title=title,
         category=category,
@@ -228,6 +231,7 @@ async def upload_document(
             "new": {
                 "title": title,
                 "category": category,
+                "type": content_type,
                 "pages": extracted.pages,
                 "characters": len(extracted.text),
             }
