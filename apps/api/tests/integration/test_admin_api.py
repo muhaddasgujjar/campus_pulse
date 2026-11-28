@@ -391,6 +391,26 @@ async def test_settings_change_is_audited_and_shown_in_the_public_config(
     assert set(audit_page.json()["items"][0]["diff"]) == {"disclaimer", "starter_questions"}
 
 
+async def test_fallback_office_must_name_a_real_office(
+    api: httpx.AsyncClient, people: People
+) -> None:
+    current = (await api.get("/api/admin/settings", headers=people.headers("admin"))).json()
+    wrong = await api.put(
+        "/api/admin/settings",
+        json={**current, "fallback_office": "Student Help Desk"},
+        headers=people.headers("admin"),
+    )
+    assert wrong.status_code == 422
+    assert "Student Help Desk" in wrong.json()["detail"]
+    saved = await api.put(
+        "/api/admin/settings",
+        json={**current, "fallback_office": "exam office"},
+        headers=people.headers("admin"),
+    )
+    assert saved.status_code == 200
+    assert saved.json()["fallback_office"] == "Exam Office"  # stored with the table's spelling
+
+
 # --- student accounts: profile, private chats, "Delete my data" -----------------------------
 
 

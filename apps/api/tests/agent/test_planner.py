@@ -85,6 +85,24 @@ def test_faculty_by_title_and_name() -> None:
     assert (plan.tool, plan.args) == ("find_faculty", {"name": "Test Faculty"})
 
 
+@pytest.mark.parametrize(
+    ("text", "name"),
+    [
+        ("What is the email of Dr Ayesha Khan?", "Ayesha Khan"),
+        ("Where is the office of Prof. Ali Raza?", "Ali Raza"),
+        ("Contact number of Sir Usman?", "Usman"),
+    ],
+)
+def test_a_titled_name_is_a_teacher_even_in_a_contact_question(text: str, name: str) -> None:
+    plan = rule_plan(text, None, TODAY)
+    assert (plan.tool, plan.args) == ("find_faculty", {"name": name})
+
+
+def test_teacher_of_a_course_code() -> None:
+    plan = rule_plan("Who is the teacher of CS-305?", None, TODAY)
+    assert (plan.tool, plan.args) == ("find_faculty", {"course": "CS-305"})
+
+
 def test_everything_else_is_a_knowledge_search_with_the_question() -> None:
     plan = rule_plan("Can F.A students apply for computer science?", None, TODAY)
     assert plan.intent == "knowledge"
@@ -168,6 +186,9 @@ def test_can_i_still_apply_is_a_deadline_question() -> None:
         ("When is the office open?", True),
         ("Where is the LGU main campus?", False),
         ("What is the phone number of the exam office?", False),
+        ("What are the library timings?", False),
+        ("When is the cafeteria open on Saturday?", False),
+        ("What are the campus timings on Monday?", True),
     ],
 )
 def test_asks_office_hours(text: str, expected: bool) -> None:

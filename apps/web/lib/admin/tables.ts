@@ -14,6 +14,8 @@ export type FieldSpec = {
   required?: boolean;
   options?: { value: string; label: string }[];
   hint?: string;
+  /** Value a new row's form starts with. */
+  default?: string;
 };
 
 export type TableSpec = {
@@ -54,6 +56,8 @@ export const TABLE_SPECS: Record<TableName, TableSpec> = {
         name: "status",
         label: "Status",
         kind: "select",
+        required: true,
+        default: "active",
         options: [
           { value: "active", label: "Active" },
           { value: "on_leave", label: "On leave" },
@@ -173,7 +177,8 @@ export function toValues(spec: TableSpec, row: Record<string, unknown> | null): 
     const value = row?.[field.name];
     if (Array.isArray(value)) values[field.name] = value.join(", ");
     else if (field.kind === "time" && typeof value === "string") values[field.name] = value.slice(0, 5);
-    else values[field.name] = value === null || value === undefined ? "" : String(value);
+    else if (value === null || value === undefined) values[field.name] = row ? "" : (field.default ?? "");
+    else values[field.name] = String(value);
   }
   return values;
 }

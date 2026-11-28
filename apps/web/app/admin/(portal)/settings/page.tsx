@@ -3,8 +3,8 @@
 import { Plus, Trash2 } from "lucide-react";
 import { type FormEvent, useEffect, useState } from "react";
 
-import { Button, Card, Field, Input, Loading, Notice, PageHeader, TextArea } from "@/components/admin/ui";
-import { adminApi, type InstitutionSettings } from "@/lib/admin/api";
+import { Button, Card, Field, Input, Loading, Notice, PageHeader, Select, TextArea } from "@/components/admin/ui";
+import { adminApi, type InstitutionSettings, type Named } from "@/lib/admin/api";
 
 function lines(text: string): string[] {
   return text
@@ -21,6 +21,14 @@ export default function SettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [offices, setOffices] = useState<Named[]>([]);
+
+  useEffect(() => {
+    adminApi
+      .lookups()
+      .then((l) => setOffices(l.offices))
+      .catch(() => setOffices([]));
+  }, []);
 
   useEffect(() => {
     adminApi
@@ -79,8 +87,19 @@ export default function SettingsPage() {
           <Field label="Disclaimer" htmlFor="s-disclaimer" required hint="Shown under every chat.">
             <TextArea id="s-disclaimer" rows={3} value={form.disclaimer} onChange={(e) => setForm({ ...form, disclaimer: e.target.value })} required />
           </Field>
-          <Field label="Office for questions the chat can't answer" htmlFor="s-fallback">
-            <Input id="s-fallback" value={form.fallback_office ?? ""} onChange={(e) => setForm({ ...form, fallback_office: e.target.value || null })} />
+          <Field
+            label="Office for questions the chat can't answer"
+            htmlFor="s-fallback"
+            hint="Used when no office matches the question. With none, the first contact below is shown."
+          >
+            <Select id="s-fallback" value={form.fallback_office ?? ""} onChange={(e) => setForm({ ...form, fallback_office: e.target.value || null })}>
+              <option value="">None</option>
+              {[...new Set([...offices.map((o) => o.name), ...(form.fallback_office ? [form.fallback_office] : [])])].map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </Select>
           </Field>
         </Card>
         <Card className="flex flex-col gap-4">
@@ -94,6 +113,7 @@ export default function SettingsPage() {
         </Card>
         <Card className="flex flex-col gap-3">
           <h2 className="font-semibold">Contacts</h2>
+          <p className="text-sm text-muted">The chat shows the first contact when no office can help with a question.</p>
           {form.contacts.map((c, i) => (
             <div key={i} className="grid items-end gap-2 sm:grid-cols-[1fr_10rem_1fr_auto]">
               <Field label="Name" htmlFor={`c-name-${i}`}>

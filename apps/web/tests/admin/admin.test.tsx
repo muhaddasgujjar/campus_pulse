@@ -153,6 +153,13 @@ describe("structured table forms", () => {
     expect(cellText("phones", [])).toBe("—");
     expect(cellText("email", null)).toBe("—");
   });
+
+  it("starts a new faculty member as active (the server refuses an empty status)", () => {
+    const spec = TABLE_SPECS.faculty;
+    expect(toValues(spec, null).status).toBe("active");
+    expect(toBody(spec, { ...toValues(spec, null), name: "Dr A", last_verified: "2026-11-01", source_name: "x" }).status).toBe("active");
+    expect(toValues(spec, { status: null }).status).toBe("");
+  });
 });
 
 describe("upload types", () => {

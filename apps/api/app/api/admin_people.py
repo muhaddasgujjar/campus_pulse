@@ -12,7 +12,7 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.api.deps import Session, StaffUser, chat_services, require
 from app.core.auth import AuthenticatedUser
@@ -362,6 +362,23 @@ async def put_settings(
 ) -> SettingsIn:
     async with session.begin():
         inst = await _institution(session, user)
+        if body.fallback_office:
+            # Must name a real office: a typo would leave unanswered questions with no contact.
+            office = (
+                await session.execute(
+                    select(Office.name).where(
+                        Office.institution_id == user.institution_id,
+                        func.lower(Office.name) == body.fallback_office.strip().lower(),
+                    )
+                )
+            ).scalar_one_or_none()
+            if office is None:
+                raise HTTPException(
+                    status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    f"No office is named {body.fallback_office!r}. "
+                    "Choose one from the Offices table.",
+                )
+            body.fallback_office = office
         before = _settings_out(inst, services.settings.institution_disclaimer).model_dump()
         after = body.model_dump()
         diff = {k: {"old": before[k], "new": v} for k, v in after.items() if before[k] != v}
