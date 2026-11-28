@@ -26,7 +26,8 @@ export type ErrorCode =
   | "provider_down"
   | "internal"
   | "invalid_message"
-  | "unavailable";
+  | "unavailable"
+  | "auth_failed";
 
 export type ServerEvent =
   | { type: "ack"; message_id: string; conversation_id: string }
@@ -53,6 +54,7 @@ export type ClientEvent =
       modality: "text" | "voice";
     }
   | { type: "resume"; conversation_id: string; last_message_id: string | null }
+  | { type: "auth"; token: string }
   | { type: "ping" };
 
 const SERVER_TYPES = new Set(["ack", "status", "sources", "token", "final", "error", "pong"]);
