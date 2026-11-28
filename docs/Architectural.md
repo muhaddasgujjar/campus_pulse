@@ -264,7 +264,7 @@ Server to client:
 - **`final.office`** carries the fallback card's office (name, phones, email, hours) when `fallback` is true.
 - **Resume (CHAT-9):** after a reconnect the client sends `resume` with the last `message_id` it received. The server replays later answers (`final.replay: true`). A turn always finishes and is stored even if the socket closes midway.
 - **Origin check:** browsers do not apply CORS to WebSockets, so the server closes connections whose `Origin` is not in `CORS_ORIGINS` (code 1008).
-- **Until M5**, `auth` is accepted and ignored: everyone chats anonymously, rate-limited by IP. Holding a conversation id is what allows reading its history, so ids are random UUIDs and never listed.
+- **`auth` (M5):** the client may send `{type: "auth", token}` first. A valid Supabase token links new conversations to that user (an anonymous conversation they send the id of is claimed); such conversations can then be read or resumed only with that user's token. A bad token gets `error` with code `auth_failed` and the chat stays anonymous. Anonymous conversations remain readable by whoever holds the id (random UUIDs, never listed).
 - On a cold start the client retries with backoff and shows the "waking up" state.
 
 ### REST (prefix `/api`)
@@ -273,8 +273,9 @@ Server to client:
 | Session | `GET /me` (profile and role), `PUT /me/profile`, `DELETE /me/data` |
 | Chat | `GET /conversations/{id}/messages`, `POST /feedback` |
 | Voice (fallback only) | `POST /voice/transcribe?lang=en\|ur` (raw audio body with its Content-Type, processed in memory, returns `{transcript}`) |
-| Public | `GET /deadlines/upcoming`, `GET /config` |
-| Admin | `/admin/kb`, `/admin/documents`, `/admin/faculty`, `/admin/timetable` (+ `/import`), `/admin/fees`, `/admin/offices`, `/admin/key-dates`, `/admin/approvals`, `/admin/unanswered`, `/admin/users` (uses the Supabase Admin API), `/admin/audit`, `/admin/metrics`, `/admin/usage`, `/admin/export` |
+| Public | `GET /deadlines`, `GET /config` |
+| Admin | `/admin/kb`, `/admin/documents` (+ `/preview`), `/admin/tables/{faculty,timetable,fees,offices,key-dates}`, `/admin/import/{timetable,faculty}`, `/admin/approvals`, `/admin/review`, `/admin/unanswered`, `/admin/lookups`, `/admin/users` (uses the Supabase Admin API), `/admin/audit`, `/admin/metrics` (includes today's usage), `/admin/settings`. `/admin/export` comes in M6 |
+| Local only | `POST /auth/dev-login` (`DEV_AUTH`, refused outside `APP_ENV=local`/`test`) |
 | Internal jobs | `POST /internal/jobs/daily` (secret header, called by GitHub Actions): retention purge, expiry reminders, usage rollup, Supabase keep-alive |
 | Ops | `GET /healthz` (instant, no DB), `/readyz` (checks DB and Redis), `/metrics` |
 

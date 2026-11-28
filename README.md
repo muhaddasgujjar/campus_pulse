@@ -4,7 +4,7 @@ A WhatsApp-style chat, with voice messages and a live voice mode, that answers L
 
 Final year project, LGU Department of Computer Science. Docs: [`docs/`](docs/) (start with [`docs/Memory.md`](docs/Memory.md)).
 
-> **Status:** milestone M4 (multimodal voice): voice messages with a live transcript (and a server fallback), spoken replies with a Listen button, and a hands-free live mode, all on browser speech. Built on the M3 real-time chat (WebSocket, sources, verified badges, feedback, reconnect) and the M2 data and RAG core. The admin portal comes in M5. Real-device voice results: [`docs/Voice-Test.md`](docs/Voice-Test.md). See [`docs/Phases.md`](docs/Phases.md).
+> **Status:** milestone M4 (multimodal voice): voice messages with a live transcript (and a server fallback), spoken replies with a Listen button, and a hands-free live mode, all on browser speech. Built on the M3 real-time chat (WebSocket, sources, verified badges, feedback, reconnect) and the M2 data and RAG core. **M5 (admin portal) is code complete locally:** staff sign-in, role checks on every admin route, content editing with approvals, the audit log, the dashboard, student profiles with "Delete my data", and the deadlines card. Not yet run against the dev Supabase project. Real-device voice results: [`docs/Voice-Test.md`](docs/Voice-Test.md). See [`docs/Phases.md`](docs/Phases.md).
 
 ## Free stack (Rs 0 per month, no credit card)
 
@@ -71,9 +71,20 @@ Tests need no cloud services. Database tests run only when `DATABASE_URL` is set
 | `make seed` | Load `seed/lgu` (idempotent). Uses `DATABASE_URL`, else a local embedded Postgres |
 | `make eval` | Golden-set evaluation, offline (no LLM, fake embedder). `make eval EVAL_ARGS="--live"` uses the configured Gemini models and counts against the free quota |
 
-## Minimal admin path (until the M5 portal)
+## Admin portal (M5)
 
-Run from `apps/api` with `uv run python -m app.cli <command>` (`--help` on each). Every write adds an `audit_log` row.
+Open http://localhost:3000/admin. Staff edit content of their own office or department and submit it; an admin approves it, and the chat answers from it within seconds (approval re-embeds at once). Every change is in the audit log.
+
+**Sign-in.**
+- **Cloud (dev, prod):** Supabase Auth in the browser. Staff and admins use email and password; their accounts are created by an admin in **Users** (Supabase Admin API, email pre-confirmed, so no email is sent). Students use anonymous sign-in only when they open their profile. The API verifies the Supabase token (JWKS for the new signing keys, `SUPABASE_JWT_SECRET` for legacy HS256) and reads the role from `profiles`, never from the token.
+- **The first admin:** `NEW_USER_PASSWORD=... uv run python -m app.cli user add you@lgu.edu.pk --name "Your Name" --role admin` (needs `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` and `DATABASE_URL`). Without `NEW_USER_PASSWORD` it asks for the password.
+- **Laptop (`make api-local`):** with no `SUPABASE_URL`, `DEV_AUTH` is turned on with a throwaway secret and two accounts are created: `admin@local.test` (admin) and `staff@local.test` (staff, Admission Office). Any password works. `DEV_AUTH` is refused unless `APP_ENV` is `local` or `test`.
+
+**Who can do what** (`docs/Architectural.md` Section 11, enforced by the API on every route): staff create and edit content of their office or department and see the approval queue; only admins approve or reject, manage users, and see the audit log, metrics and settings. Staff without a department cannot edit the timetable (its rows belong to departments). Faculty CSV imports are admin only.
+
+## Command-line admin path
+
+Run from `apps/api` with `uv run python -m app.cli <command>` (`--help` on each). Every write adds an `audit_log` row. The CLI needs direct database access, which only admins have.
 
 | Command | What it does |
 |---|---|
@@ -85,6 +96,7 @@ Run from `apps/api` with `uv run python -m app.cli <command>` (`--help` on each)
 | `doc list [--status pending] [--category fees]` / `doc show ID` | Review documents and their text |
 | `doc approve ID [ID ...] [--verified YYYY-MM-DD]` | Approve, then chunk and embed (only approved content is used for answers) |
 | `reindex` | Re-chunk and re-embed all approved content |
+| `user add EMAIL --name NAME --role staff\|admin [--office NAME] [--department NAME]` | Create a staff or admin account (Supabase account with email confirmed, plus the profile) |
 
 ### One-time website import (D1 note)
 
@@ -111,8 +123,10 @@ Templates: [`apps/api/.env.example`](apps/api/.env.example) and [`apps/web/.env.
 | `DATABASE_URL` | api | **yes** | Supabase transaction pooler URL (app) |
 | `DATABASE_URL_MIGRATIONS` | api | **yes** | Supabase session pooler URL (Alembic) |
 | `SUPABASE_URL` | api | no | Supabase project URL |
-| `SUPABASE_SERVICE_ROLE_KEY` | api | **yes** | Admin API (create staff accounts, M5) |
-| `SUPABASE_JWT_SECRET` | api | **yes** | Verify Supabase tokens (M5) |
+| `SUPABASE_SERVICE_ROLE_KEY` | api | **yes** | Admin API (create and block staff accounts) |
+| `SUPABASE_JWT_SECRET` | api | **yes** | Verify legacy HS256 Supabase tokens (leave empty on the new ES256 signing keys: JWKS is used) |
+| `SUPABASE_JWT_AUDIENCE` | api | no | Expected `aud` claim, default `authenticated` |
+| `DEV_AUTH` | api | no | Laptop only: local sign-in without Supabase (`make api-local` sets it). Refused outside `APP_ENV=local`/`test` |
 | `REDIS_URL` | api | **yes** | Upstash Redis TLS URL |
 | `GEMINI_API_KEY` | api | **yes** | Google AI Studio key |
 | `LLM_PROVIDERS` | api | no | Fallback chain, e.g. `groq,gemini,template` |
@@ -149,9 +163,13 @@ Templates: [`apps/api/.env.example`](apps/api/.env.example) and [`apps/web/.env.
 | `WS /ws/chat` | Chat: `user_message`, `resume`, `ping` in; `ack`, `status`, `sources`, `token`, `final`, `error`, `pong` out. Protocol: [`docs/Architectural.md`](docs/Architectural.md) Section 8 |
 | `GET /api/conversations/{id}/messages` | Latest 100 messages of a conversation (reload, CHAT-9) |
 | `POST /api/feedback` | Thumbs up or down on an answer, with an optional reason and comment (CHAT-4) |
+| `GET /api/deadlines?program=` | Upcoming key dates for the deadlines card (CHAT-7) |
+| `GET /api/me`, `PUT /api/me/profile`, `DELETE /api/me/data` | Signed-in user: role and permissions, student profile, "Delete my data" (chats and profile details) |
+| `/api/admin/*` | Admin portal (Bearer token): `kb`, `documents` (+ `preview`), `approvals`, `review`, `unanswered`, `tables/{faculty,timetable,fees,offices,key-dates}`, `import/{timetable,faculty}`, `lookups`, `users`, `audit`, `metrics`, `settings` |
+| `POST /api/auth/dev-login` | Laptop only (`DEV_AUTH`): sign in as a local account. 404 everywhere else |
 | `POST /api/voice/transcribe?lang=en\|ur` | Voice fallback for browsers without speech recognition: raw audio body (webm, ogg, mp4, aac, mp3, wav), 10 MB at most, transcribed in memory and never stored (VOI-1) |
 
-Until M5 everyone chats anonymously, rate-limited by IP; the WebSocket only accepts origins in `CORS_ORIGINS`. Without `REDIS_URL` the rate limit, session memory and response cache run in process.
+Students chat anonymously, rate-limited by IP, unless they have signed in through their profile; then the chat sends `auth` with their token and their conversations become readable only with that token. The WebSocket only accepts origins in `CORS_ORIGINS`. Without `REDIS_URL` the rate limit, session memory and response cache run in process.
 
 ## Deployment (later)
 
