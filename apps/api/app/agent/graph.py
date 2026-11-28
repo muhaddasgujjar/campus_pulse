@@ -91,6 +91,11 @@ async def _office_for(deps: AgentDeps, query: str) -> dict[str, Any] | None:
         result = await get_office(ctx, OfficeArgs(name_or_topic=needle))
         if result.found:
             return result.data[0]
+    # Last resort: the first contact from the admin Settings page (ADP-2).
+    for contact in deps.institution_config.get("contacts") or []:
+        if contact.get("name") and (contact.get("phone") or contact.get("email")):
+            phones = [contact["phone"]] if contact.get("phone") else []
+            return {"name": contact["name"], "phones": phones, "email": contact.get("email")}
     return None
 
 
@@ -229,7 +234,7 @@ async def retrieve(state: AgentState, runtime: Runtime[AgentDeps]) -> dict[str, 
     verdict = grade(
         query,
         search.chunks,
-        min_similarity=deps.settings.retrieval_min_similarity,
+        min_similarity=deps.settings.min_similarity,
         min_coverage=deps.settings.retrieval_min_keyword_coverage,
     )
     update: dict[str, Any] = {

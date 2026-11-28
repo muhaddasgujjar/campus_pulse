@@ -1,13 +1,22 @@
 """Chunking, PDF extraction, embeddings and grading: pure units, no database, no network."""
 
+import json
 import math
 import uuid
 from datetime import date
+from typing import Any
 
+import httpx
 import pytest
 
 from app.services.chunking import MAX_TOKENS, WORDS_PER_TOKEN, chunk_text, entry_chunk
-from app.services.embeddings import CachedQueryEmbedder, FakeEmbedder, build_embedder
+from app.services.embeddings import (
+    CachedQueryEmbedder,
+    EmbeddingError,
+    FakeEmbedder,
+    OpenAIEmbedder,
+    build_embedder,
+)
 from app.services.pdf import PdfRejectedError, extract_pdf_text
 from app.services.retrieval import RetrievedChunk, coverage, grade
 from tests.conftest import make_settings
@@ -146,3 +155,43 @@ def test_grade_ok_by_similarity_or_coverage_and_weak_otherwise() -> None:
     )
     weak = grade("scholarship deadline", [_chunk("hostel rooms", 0.2)], **kwargs)
     assert not weak.ok and weak.reason == "weak_match"
+
+
+def _openai_embedder(handler: Any, dim: int = 4) -> OpenAIEmbedder:
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    return OpenAIEmbedder("test-key", "text-embedding-3-small", dim, batch_size=2, client=client)
+
+
+async def test_openai_embedder_asks_for_the_dimension_and_normalizes_in_order() -> None:
+    bodies: list[dict[str, Any]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        bodies.append(body)
+        data = [
+            {"index": i, "embedding": [3.0, 4.0, 0.0, float(i)]} for i in range(len(body["input"]))
+        ]
+        return httpx.Response(200, json={"data": list(reversed(data))})
+
+    vectors = await _openai_embedder(handler).embed_documents(["a", "b", "c"])
+    assert [b["input"] for b in bodies] == [["a", "b"], ["c"]]  # batches
+    assert all(b["dimensions"] == 4 and b["model"] == "text-embedding-3-small" for b in bodies)
+    assert vectors[0] == [0.6, 0.8, 0.0, 0.0]  # index 0 first, normalized
+    assert abs(sum(v * v for v in vectors[1]) - 1) < 1e-9
+
+
+async def test_openai_embedder_errors_become_embedding_errors() -> None:
+    with pytest.raises(EmbeddingError, match="status 429"):
+        await _openai_embedder(lambda r: httpx.Response(429, json={})).embed_query("q")
+    wrong_size = {"data": [{"index": 0, "embedding": [1.0, 2.0]}]}
+    with pytest.raises(EmbeddingError, match="expected 4 dimensions"):
+        await _openai_embedder(lambda r: httpx.Response(200, json=wrong_size)).embed_query("q")
+
+
+def test_build_embedder_picks_openai_by_model_name() -> None:
+    no_key = make_settings(embedding_model="text-embedding-3-small", gemini_api_key="g")
+    assert build_embedder(no_key) is None  # an OpenAI model never falls back to Gemini
+    openai = build_embedder(
+        make_settings(embedding_model="text-embedding-3-small", openai_api_key="o-key")
+    )
+    assert openai is not None and (openai.name, openai.dim) == ("text-embedding-3-small", 768)

@@ -82,3 +82,19 @@ def test_empty_disclaimer_keeps_the_default(monkeypatch: pytest.MonkeyPatch) -> 
     assert settings.institution_disclaimer.startswith("Answers are based on information verified")
     custom = load(monkeypatch, INSTITUTION_DISCLAIMER="Confirm with your office.")
     assert custom.institution_disclaimer == "Confirm with your office."
+
+
+@pytest.mark.parametrize(
+    ("model", "override", "expected"),
+    [
+        ("gemini-embedding-001", "", 0.62),
+        ("text-embedding-3-small", "", 0.54),  # tuned on eval/golden.jsonl, 2026-11-28
+        ("fake", "", 0.62),
+        ("text-embedding-3-small", "0.7", 0.7),  # an explicit value always wins
+    ],
+)
+def test_similarity_threshold_follows_the_embedding_model(
+    monkeypatch: pytest.MonkeyPatch, model: str, override: str, expected: float
+) -> None:
+    settings = load(monkeypatch, EMBEDDING_MODEL=model, RETRIEVAL_MIN_SIMILARITY=override)
+    assert settings.min_similarity == expected

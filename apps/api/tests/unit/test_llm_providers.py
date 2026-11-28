@@ -20,6 +20,7 @@ from app.services.llm import (
 )
 from app.services.llm.gemini import GeminiLLM
 from app.services.llm.groq import GROQ_BASE_URL, GroqLLM
+from app.services.llm.openai import OPENAI_BASE_URL, OpenAILLM
 from app.services.quota import QuotaGuard
 from tests.conftest import make_settings
 
@@ -281,3 +282,65 @@ async def test_groq_stream_reads_server_sent_events() -> None:
 
     chunks = [c async for c in _groq(handler).stream("q", "main")]
     assert "".join(chunks) == "Hello"
+
+
+# --- OpenAI adapter (paid backup, same API as Groq) -------------------------------------------
+
+
+def _openai(handler: Callable[[httpx.Request], httpx.Response], **kwargs: Any) -> OpenAILLM:
+    client = httpx.AsyncClient(base_url=OPENAI_BASE_URL, transport=httpx.MockTransport(handler))
+    return OpenAILLM("test-key", "test-fast", "test-main", client=client, **kwargs)
+
+
+async def test_openai_sends_no_temperature_and_parses_json() -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json=_completion('{"intent": "knowledge"}'))
+
+    result = await _openai(handler, reasoning_effort="minimal").generate(
+        "q", "fast", json_schema={"type": "object"}
+    )
+    assert result.json == {"intent": "knowledge"}
+    body = json.loads(seen[0].content)
+    assert "temperature" not in body  # gpt-5 family accepts only the default
+    assert body["reasoning_effort"] == "minimal"
+    assert str(seen[0].url) == f"{OPENAI_BASE_URL}/chat/completions"
+
+
+async def test_openai_errors_name_the_provider() -> None:
+    with pytest.raises(LLMQuotaError, match="OpenAI quota"):
+        await _openai(lambda r: httpx.Response(429, json={})).generate("q", "fast")
+
+
+async def test_openai_stream_skips_a_usage_only_chunk() -> None:
+    events = [
+        'data: {"choices": [{"delta": {"content": "Hi"}}]}',
+        'data: {"choices": [], "usage": {"prompt_tokens": 3}}',
+        "data: [DONE]",
+    ]
+    chunks = [
+        c
+        async for c in _openai(lambda r: httpx.Response(200, text="\n\n".join(events))).stream(
+            "q", "main"
+        )
+    ]
+    assert chunks == ["Hi"]
+
+
+def test_build_llm_openai_after_groq_with_a_daily_cap() -> None:
+    settings = make_settings(
+        llm_providers=["groq", "openai", "template"],
+        groq_api_key="g-key", groq_model_fast="g-fast", groq_model_main="g-main",
+        openai_api_key="o-key", openai_model_fast="o-fast", openai_model_main="o-main",
+        openai_rpd_limit=500,
+    )  # fmt: skip
+    router = build_llm(settings)
+    assert [p.name for p in router.providers] == ["groq", "openai"]
+    assert router.quotas["openai"].rpd_limit == 500
+
+
+def test_build_llm_skips_openai_without_a_key() -> None:
+    settings = make_settings(llm_providers=["openai"], openai_model_fast="f", openai_model_main="m")
+    assert not build_llm(settings).available

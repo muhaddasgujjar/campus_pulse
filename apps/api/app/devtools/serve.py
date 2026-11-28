@@ -5,8 +5,9 @@ seed/<slug> (idempotent), then runs uvicorn with DATABASE_URL pointing at it. Th
 end to end on a laptop: no Supabase, no Redis (in-process fallbacks), and templates instead of
 an LLM unless LLM_PROVIDERS and keys are set in .env.
 
-Embeddings: seeding and querying must use the same embedder. Unless EMBEDDING_MODEL and
-GEMINI_API_KEY are both configured, EMBEDDING_MODEL=fake is used for both (lexical vectors,
+Embeddings: seeding and querying must use the same embedder. Unless EMBEDDING_MODEL and the
+key of its provider (OPENAI_API_KEY for text-embedding-*, else GEMINI_API_KEY) are configured,
+EMBEDDING_MODEL=fake is used for both (lexical vectors,
 like `make eval`). After switching embedders, run `uv run python -m app.cli reindex`.
 
 Sign-in (M5): with no SUPABASE_URL, DEV_AUTH is turned on with a throwaway JWT secret and two
@@ -25,13 +26,23 @@ from pathlib import Path
 
 from app.core.config import Settings
 from app.devtools.localdb import API_DIR, database_url, migrate
+from app.services.embeddings import is_openai_embedding_model
 
 REPO = API_DIR.parents[1]
 
 
+def embeddings_configured(settings: Settings) -> bool:
+    """Real embeddings need the model and the key of its provider (OpenAI or Gemini)."""
+    if not settings.embedding_model or settings.embedding_model == "fake":
+        return False
+    if is_openai_embedding_model(settings.embedding_model):
+        return settings.openai_api_key is not None
+    return settings.gemini_api_key is not None
+
+
 def local_env(url: str, settings: Settings, cors_origins: str) -> dict[str, str]:
     env = dict(os.environ, DATABASE_URL=url, APP_ENV="local")
-    if not (settings.embedding_model and settings.gemini_api_key):
+    if not embeddings_configured(settings):
         env["EMBEDDING_MODEL"] = "fake"
     env.setdefault("CORS_ORIGINS", cors_origins)
     if not settings.supabase_url:

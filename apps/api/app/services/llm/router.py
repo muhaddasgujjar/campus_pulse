@@ -137,6 +137,32 @@ def build_llm(settings: Settings, redis: Redis | None = None) -> LLMRouter:
                     provider="groq",
                     reason="GROQ_API_KEY, GROQ_MODEL_FAST or GROQ_MODEL_MAIN missing",
                 )
+        elif name == "openai":
+            fast, main = settings.openai_model_fast, settings.openai_model_main
+            if settings.openai_api_key and fast and main:
+                from app.services.llm.openai import OpenAILLM
+
+                providers.append(
+                    OpenAILLM(
+                        settings.openai_api_key.get_secret_value(),
+                        fast,
+                        main,
+                        timeout_seconds=settings.llm_timeout_seconds,
+                        reasoning_effort=settings.openai_reasoning_effort,
+                    )
+                )
+                quotas["openai"] = QuotaGuard(
+                    settings.openai_rpm_limit,
+                    settings.openai_rpd_limit,
+                    wait,
+                    day_counter=RedisDayCounter(redis, "openai") if redis else None,
+                )
+            else:
+                log.warning(
+                    "llm_provider_skipped",
+                    provider="openai",
+                    reason="OPENAI_API_KEY, OPENAI_MODEL_FAST or OPENAI_MODEL_MAIN missing",
+                )
         else:
             log.warning("llm_provider_unknown", provider=name)
     return LLMRouter(providers, quotas)

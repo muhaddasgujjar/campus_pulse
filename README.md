@@ -131,12 +131,14 @@ Templates: [`apps/api/.env.example`](apps/api/.env.example) and [`apps/web/.env.
 | `GEMINI_API_KEY` | api | **yes** | Google AI Studio key |
 | `LLM_PROVIDERS` | api | no | Fallback chain, e.g. `groq,gemini,template` |
 | `LLM_MODEL_FAST` / `LLM_MODEL_MAIN` | api | no | Gemini model IDs from AI Studio (no defaults in code) |
-| `EMBEDDING_MODEL` / `EMBEDDING_DIM` | api | no | `gemini-embedding-001` / `768` (D17) |
+| `EMBEDDING_MODEL` / `EMBEDDING_DIM` | api | no | `gemini-embedding-001` / `768` (D17); `text-embedding-3-small` uses OpenAI at the same 768 dimensions (run `app.cli reindex` after switching) |
 | `MAX_LLM_CALLS_PER_TURN` | api | no | LLM budget, at most 2 (COST-2) |
 | `LLM_TIMEOUT_SECONDS` | api | no | Abandon an LLM request after this many seconds |
 | `GROQ_API_KEY` | api | **yes** | Groq key (free tier, LLM only) |
 | `GROQ_MODEL_FAST` / `GROQ_MODEL_MAIN` / `GROQ_REASONING_EFFORT` | api | no | Groq model IDs and gpt-oss reasoning effort |
-| `GEMINI_RPM_LIMIT` / `GEMINI_RPD_LIMIT` / `GROQ_RPM_LIMIT` / `GROQ_RPD_LIMIT` | api | no | Per-provider quota guard, copied from each dashboard (empty = none) |
+| `OPENAI_API_KEY` | api | no | OpenAI key (**paid**, amended D14): backup LLM after Groq and OpenAI embeddings |
+| `OPENAI_MODEL_FAST` / `OPENAI_MODEL_MAIN` / `OPENAI_REASONING_EFFORT` | api | no | Cheapest model, `gpt-5-nano`, with `minimal` effort |
+| `GEMINI_RPM_LIMIT` / `GEMINI_RPD_LIMIT` / `GROQ_RPM_LIMIT` / `GROQ_RPD_LIMIT` / `OPENAI_RPM_LIMIT` / `OPENAI_RPD_LIMIT` | api | no | Per-provider quota guard, copied from each dashboard (empty = none); for OpenAI the daily limit is the spending cap |
 | `QUOTA_MAX_WAIT_SECONDS` | api | no | Wait near the per-minute limit before the busy fallback |
 | `RESPONSE_CACHE_TTL_SECONDS` | api | no | Response cache lifetime, 0 = off (Redis when `REDIS_URL` is set) |
 | `CHAT_RATE_LIMIT_MESSAGES` / `CHAT_RATE_LIMIT_WINDOW_SECONDS` | api | no | Anonymous rate limit per IP, default 20 per 600 s (CHAT-7) |

@@ -123,6 +123,63 @@ async def test_office_hours_without_an_office_name_list_every_office(
     assert embedder.calls == 0  # answered from the table, no retrieval
 
 
+async def test_hours_of_something_that_is_not_an_office_come_from_the_knowledge_base(
+    db_session: AsyncSession, embedder: FakeEmbedder
+) -> None:
+    """'library timings' is not an office: the approved entry answers, not every office's hours."""
+    inst = (await db_session.execute(select(Institution))).scalars().one()
+    entry = KbEntry(
+        institution_id=inst.id,
+        title="Library timings",
+        question="What are the library timings?",
+        answer="The library is open Monday to Saturday, 08:00 to 20:00.",
+        category="general",
+        status="approved",
+        owner_name="Library",
+        last_verified=date(2026, 9, 1),
+    )
+    db_session.add(entry)
+    await db_session.flush()
+    await index_entry(db_session, entry, embedder)
+    result = await ask(db_session, embedder, "What are the library timings?")
+    assert result.tool_used == "search_knowledge"
+    assert "08:00 to 20:00" in result.answer
+    assert "Exam Office" not in result.answer
+
+
+async def test_hours_of_an_unknown_place_fall_back_instead_of_listing_offices(
+    db_session: AsyncSession, embedder: FakeEmbedder
+) -> None:
+    result = await ask(db_session, embedder, "What are the swimming pool timings?")
+    assert result.mode == "fallback"
+    assert "Exam Office" not in result.answer
+
+
+async def test_fallback_uses_a_settings_contact_when_no_office_matches(
+    db_session: AsyncSession, embedder: FakeEmbedder
+) -> None:
+    inst = (await db_session.execute(select(Institution))).scalars().one()
+    inst.config = {
+        **(inst.config or {}),
+        "fallback_office": None,
+        "contacts": [{"name": "Student Help Desk", "phone": "042-111-222-333", "email": None}],
+    }
+    await db_session.flush()
+    result = await ask(db_session, embedder, "Is there a horse riding club?")
+    assert result.mode == "fallback"
+    assert result.office_contact == {
+        "name": "Student Help Desk", "phones": ["042-111-222-333"], "email": None
+    }  # fmt: skip
+    assert "Student Help Desk can help: 042-111-222-333" in result.answer
+
+
+async def test_a_teachers_email_is_looked_up_in_the_faculty_table(
+    db_session: AsyncSession, embedder: FakeEmbedder
+) -> None:
+    result = await ask(db_session, embedder, "What is the email of Dr Nobody Here?")
+    assert result.tool_used == "find_faculty"
+
+
 # --- rule shortcuts: 0 LLM calls --------------------------------------------------------------
 
 

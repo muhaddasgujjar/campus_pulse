@@ -79,12 +79,21 @@ class Settings(BaseSettings):
     groq_model_main: str | None = None
     groq_reasoning_effort: str | None = None  # gpt-oss models: low | medium | high
 
+    # --- OpenAI (PAID, amended D14 2026-11-28): backup LLM after Groq, and embeddings when
+    # EMBEDDING_MODEL is an OpenAI model (text-embedding-3-*), kept at EMBEDDING_DIM (D17).
+    openai_api_key: SecretStr | None = None
+    openai_model_fast: str | None = None
+    openai_model_main: str | None = None
+    openai_reasoning_effort: str | None = None  # gpt-5 family: minimal | low | medium | high
+
     # --- quota guard per provider (COST-4). Copy the limits from each dashboard.
     # Empty = no local limit (the provider's 429 is still handled).
     gemini_rpm_limit: int | None = Field(default=None, ge=1)
     gemini_rpd_limit: int | None = Field(default=None, ge=1)
     groq_rpm_limit: int | None = Field(default=None, ge=1)
     groq_rpd_limit: int | None = Field(default=None, ge=1)
+    openai_rpm_limit: int | None = Field(default=None, ge=1)
+    openai_rpd_limit: int | None = Field(default=None, ge=1)  # also the daily spending cap
     quota_max_wait_seconds: float = Field(default=20, ge=0, le=60)
 
     # --- response cache (COST-3): Redis when REDIS_URL is set, else in process. 0 = off.
@@ -104,7 +113,9 @@ class Settings(BaseSettings):
 
     # --- retrieval and grading (tune on the golden set, Architectural.md Section 6) ---
     retrieval_top_k: int = Field(default=5, ge=1, le=20)
-    retrieval_min_similarity: float = Field(default=0.62, ge=0, le=1)
+    # Empty = the default for the embedding model (tuned on eval/golden.jsonl, 2026-11-28):
+    # 0.62 for gemini-embedding-001, 0.54 for OpenAI text-embedding-3-* (lower cosine scores).
+    retrieval_min_similarity: float | None = Field(default=None, ge=0, le=1)
     retrieval_min_keyword_coverage: float = Field(default=0.6, ge=0, le=1)
 
     # --- ingestion limits (Architectural.md Section 7) ---
@@ -121,6 +132,14 @@ class Settings(BaseSettings):
         if value is None or (isinstance(value, str) and not value.strip()):
             return DEFAULT_DISCLAIMER
         return value
+
+    @property
+    def min_similarity(self) -> float:
+        """The vector similarity a retrieved chunk needs to count as an answer (ANS-4)."""
+        if self.retrieval_min_similarity is not None:
+            return self.retrieval_min_similarity
+        model = self.embedding_model or ""
+        return 0.54 if model.startswith("text-embedding-") else 0.62
 
     @model_validator(mode="after")
     def _dev_auth_only_locally(self) -> "Settings":
@@ -154,6 +173,13 @@ class Settings(BaseSettings):
         "gemini_rpd_limit",
         "groq_rpm_limit",
         "groq_rpd_limit",
+        "openai_api_key",
+        "openai_model_fast",
+        "openai_model_main",
+        "openai_reasoning_effort",
+        "openai_rpm_limit",
+        "openai_rpd_limit",
+        "retrieval_min_similarity",
         mode="before",
     )
     @classmethod

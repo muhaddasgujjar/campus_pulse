@@ -20,6 +20,9 @@ GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 
 class GroqLLM:
     name = "groq"
+    label = "Groq"
+    base_url = GROQ_BASE_URL
+    send_temperature = True  # OpenAI's gpt-5 family accepts only the default temperature
 
     def __init__(
         self,
@@ -31,7 +34,7 @@ class GroqLLM:
         reasoning_effort: str | None = None,
         client: httpx.AsyncClient | None = None,
     ) -> None:
-        self._client = client or httpx.AsyncClient(base_url=GROQ_BASE_URL)
+        self._client = client or httpx.AsyncClient(base_url=self.base_url)
         self._headers = {"Authorization": f"Bearer {api_key}"}
         self._models: dict[ModelTier, str] = {"fast": model_fast, "main": model_main}
         self._timeout = timeout_seconds
@@ -47,11 +50,9 @@ class GroqLLM:
     ) -> dict[str, Any]:
         messages = [{"role": "system", "content": system}] if system else []
         messages.append({"role": "user", "content": prompt})
-        body: dict[str, Any] = {
-            "model": self._models[model_tier],
-            "messages": messages,
-            "temperature": 0.1 if json_schema else 0.3,
-        }
+        body: dict[str, Any] = {"model": self._models[model_tier], "messages": messages}
+        if self.send_temperature:
+            body["temperature"] = 0.1 if json_schema else 0.3
         if json_schema is not None:
             body["response_format"] = {
                 "type": "json_schema",
@@ -63,11 +64,10 @@ class GroqLLM:
             body["stream"] = True
         return body
 
-    @staticmethod
-    def _error(status: int) -> LLMProviderError:
+    def _error(self, status: int) -> LLMProviderError:
         if status == 429:
-            return LLMQuotaError("Groq quota reached (429)")
-        return LLMProviderError(f"Groq request failed ({status})")
+            return LLMQuotaError(f"{self.label} quota reached (429)")
+        return LLMProviderError(f"{self.label} request failed ({status})")
 
     async def generate(
         self,
@@ -84,9 +84,9 @@ class GroqLLM:
                 timeout=self._timeout,
             )
         except httpx.TimeoutException as exc:
-            raise LLMProviderError("Groq timed out") from exc
+            raise LLMProviderError(f"{self.label} timed out") from exc
         except httpx.HTTPError as exc:
-            raise LLMProviderError(f"Groq request failed ({type(exc).__name__})") from exc
+            raise LLMProviderError(f"{self.label} request failed ({type(exc).__name__})") from exc
         if response.status_code != 200:
             raise self._error(response.status_code)
         payload = response.json()
@@ -127,8 +127,11 @@ class GroqLLM:
                     data = line.removeprefix("data: ").strip()
                     if data == "[DONE]":
                         return
-                    delta = json.loads(data)["choices"][0].get("delta") or {}
+                    choices = json.loads(data).get("choices") or []
+                    if not choices:  # e.g. a final usage-only chunk
+                        continue
+                    delta = choices[0].get("delta") or {}
                     if delta.get("content"):
                         yield delta["content"]
         except httpx.HTTPError as exc:
-            raise LLMProviderError(f"Groq stream failed ({type(exc).__name__})") from exc
+            raise LLMProviderError(f"{self.label} stream failed ({type(exc).__name__})") from exc
