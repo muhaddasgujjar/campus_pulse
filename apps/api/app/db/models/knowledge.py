@@ -32,6 +32,10 @@ class KbEntry(UUIDPk, Timestamps, Base):
     department_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("departments.id", ondelete="SET NULL")
     )
+    # Staff scope (AUTH-3): the owning office, when the content belongs to an office.
+    office_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("offices.id", ondelete="SET NULL")
+    )
     language: Mapped[str] = mapped_column(Text, server_default="en")
     owner_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("profiles.id", ondelete="SET NULL")
@@ -60,6 +64,10 @@ class Document(UUIDPk, Timestamps, Base):
     category: Mapped[str] = mapped_column(Text)
     department_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("departments.id", ondelete="SET NULL")
+    )
+    # Staff scope (AUTH-3): the owning office, when the content belongs to an office.
+    office_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("offices.id", ondelete="SET NULL")
     )
     owner_name: Mapped[str | None] = mapped_column(Text)
     storage_key: Mapped[str | None] = mapped_column(Text)  # Supabase Storage key (M5)

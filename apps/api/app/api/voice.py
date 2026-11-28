@@ -11,7 +11,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 
-from app.api.chat import chat_services
+from app.api.deps import chat_services, read_capped
 from app.core.logging import get_logger
 from app.services.chat import ChatServices
 from app.services.voice.transcribe import GEMINI_MIME, STTError, STTQuotaError, check_audio
@@ -22,18 +22,6 @@ log = get_logger("voice")
 
 class TranscriptOut(BaseModel):
     transcript: str
-
-
-async def _read_capped(request: Request, max_bytes: int) -> bytes:
-    declared = request.headers.get("content-length")
-    if declared and declared.isdigit() and int(declared) > max_bytes:
-        raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "recording too large")
-    body = bytearray()
-    async for chunk in request.stream():
-        body.extend(chunk)
-        if len(body) > max_bytes:
-            raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "recording too large")
-    return bytes(body)
 
 
 @router.post("/transcribe", response_model=TranscriptOut)
@@ -49,7 +37,9 @@ async def transcribe(
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE, "voice transcription not configured"
         )
-    audio = await _read_capped(request, services.settings.voice_max_mb * 1024 * 1024)
+    audio = await read_capped(
+        request, services.settings.voice_max_mb * 1024 * 1024, "recording too large"
+    )
     if not audio:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "empty recording")
     try:

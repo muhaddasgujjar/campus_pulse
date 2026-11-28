@@ -66,8 +66,10 @@ async def test_public_config_returns_institution_text(client: httpx.AsyncClient)
         "short_name",
         "disclaimer",
         "starter_questions",
+        "dev_auth",
     }
     assert body["starter_questions"] == []
+    assert body["dev_auth"] is False
 
 
 async def test_cors_allows_configured_origin(client: httpx.AsyncClient) -> None:

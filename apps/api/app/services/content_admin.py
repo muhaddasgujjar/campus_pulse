@@ -7,6 +7,8 @@ pending and removes it from search until it is approved again (version history i
 Every write records an audit row in the same transaction (rule 7).
 """
 
+import csv
+import io
 import uuid
 from dataclasses import dataclass
 from datetime import date
@@ -76,9 +78,12 @@ async def create_entry(
     actor: Actor,
     *,
     submit: bool = False,
+    department_id: uuid.UUID | None = None,
+    office_id: uuid.UUID | None = None,
 ) -> KbEntry:
-    values = data.model_dump()
+    values: dict[str, Any] = data.model_dump()
     values["status"] = "pending" if submit else "draft"
+    values["department_id"], values["office_id"] = department_id, office_id
     entry = KbEntry(institution_id=institution_id, owner_id=actor.user_id, **values)
     session.add(entry)
     await session.flush()
@@ -86,7 +91,7 @@ async def create_entry(
     return entry
 
 
-async def _get_entry(session: AsyncSession, entry_id: uuid.UUID) -> KbEntry:
+async def get_entry(session: AsyncSession, entry_id: uuid.UUID) -> KbEntry:
     entry = await session.get(KbEntry, entry_id)
     if entry is None:
         raise ContentError(f"Knowledge entry {entry_id} not found.")
@@ -109,7 +114,7 @@ async def _set_status(
 
 
 async def submit_entry(session: AsyncSession, entry_id: uuid.UUID, actor: Actor) -> KbEntry:
-    entry = await _get_entry(session, entry_id)
+    entry = await get_entry(session, entry_id)
     if entry.status != "draft":
         raise ContentError(f"Only drafts can be submitted (status is {entry.status}).")
     await _set_status(session, entry, "pending", actor, rejected_reason=None)
@@ -119,7 +124,7 @@ async def submit_entry(session: AsyncSession, entry_id: uuid.UUID, actor: Actor)
 async def approve_entry(
     session: AsyncSession, entry_id: uuid.UUID, actor: Actor, embedder: Embedder | None
 ) -> tuple[KbEntry, IndexResult]:
-    entry = await _get_entry(session, entry_id)
+    entry = await get_entry(session, entry_id)
     if entry.status != "pending":
         raise ContentError(f"Only pending entries can be approved (status is {entry.status}).")
     if entry.last_verified is None:
@@ -131,7 +136,7 @@ async def approve_entry(
 async def reject_entry(
     session: AsyncSession, entry_id: uuid.UUID, actor: Actor, reason: str
 ) -> KbEntry:
-    entry = await _get_entry(session, entry_id)
+    entry = await get_entry(session, entry_id)
     if entry.status != "pending":
         raise ContentError(f"Only pending entries can be rejected (status is {entry.status}).")
     if not reason.strip():
@@ -145,14 +150,18 @@ async def update_entry(
 ) -> KbEntry:
     """Edit fields; the entry goes back to pending and leaves search until re-approved."""
     allowed = {"title", "question", "answer", "category", "owner_name", "language",
-               "last_verified", "expires_at", "source_url"}  # fmt: skip
+               "last_verified", "expires_at", "source_url", "department_id",
+               "office_id"}  # fmt: skip
     unknown = set(changes) - allowed
     if unknown:
         raise ContentError(f"Cannot edit: {', '.join(sorted(unknown))}")
-    entry = await _get_entry(session, entry_id)
+    entry = await get_entry(session, entry_id)
     if entry.status == "archived":
         raise ContentError("Archived entries cannot be edited.")
-    diff = {k: {"old": getattr(entry, k), "new": v} for k, v in changes.items()}
+    changes = {k: v for k, v in changes.items() if getattr(entry, k) != v}
+    if not changes:
+        return entry
+    diff: dict[str, Any] = {k: {"old": getattr(entry, k), "new": v} for k, v in changes.items()}
     for name, value in changes.items():
         setattr(entry, name, value)
     if entry.status == "approved":
@@ -166,7 +175,9 @@ async def update_entry(
 
 
 async def archive_entry(session: AsyncSession, entry_id: uuid.UUID, actor: Actor) -> KbEntry:
-    entry = await _get_entry(session, entry_id)
+    entry = await get_entry(session, entry_id)
+    if entry.status == "archived":
+        raise ContentError("The entry is already archived.")
     await _set_status(session, entry, "archived", actor)
     await index_entry(session, entry, None)
     return entry
@@ -187,6 +198,8 @@ async def upload_document(
     expires_at: date | None,
     max_mb: int,
     actor: Actor,
+    department_id: uuid.UUID | None = None,
+    office_id: uuid.UUID | None = None,
 ) -> Document:
     extracted = extract_pdf_text(pdf_bytes, max_mb)  # raises PdfRejectedError
     document = Document(
@@ -194,6 +207,8 @@ async def upload_document(
         title=title,
         category=category,
         owner_name=owner_name,
+        department_id=department_id,
+        office_id=office_id,
         content=extracted.text,
         status="pending",
         uploaded_by=actor.user_id,
@@ -230,9 +245,7 @@ async def approve_document(
 ) -> tuple[Document, IndexResult]:
     """Approve and index. Approval is the staff check, so a document without a verification
     date (an imported web page) gets `verified_on` as its last_verified date."""
-    document = await session.get(Document, document_id)
-    if document is None:
-        raise ContentError(f"Document {document_id} not found.")
+    document = await get_document(session, document_id)
     if document.status != "pending":
         raise ContentError(f"Only pending documents can be approved (status is {document.status}).")
     diff: dict[str, Any] = {"status": {"old": "pending", "new": "approved"}}
@@ -244,6 +257,53 @@ async def approve_document(
     await session.flush()
     _audit(session, actor, document.institution_id, "approve", "documents", document.id, diff)
     return document, await index_document(session, document, embedder)
+
+
+async def get_document(session: AsyncSession, document_id: uuid.UUID) -> Document:
+    document = await session.get(Document, document_id)
+    if document is None:
+        raise ContentError(f"Document {document_id} not found.")
+    return document
+
+
+async def reject_document(
+    session: AsyncSession, document_id: uuid.UUID, actor: Actor, reason: str
+) -> Document:
+    """Back to draft; the reason is kept in the audit log (documents have no reason column)."""
+    document = await get_document(session, document_id)
+    if document.status != "pending":
+        raise ContentError(f"Only pending documents can be rejected (status is {document.status}).")
+    if not reason.strip():
+        raise ContentError("A rejection needs a reason.")
+    document.status = "draft"
+    await session.flush()
+    _audit(session, actor, document.institution_id, "reject", "documents", document.id,
+           {"status": {"old": "pending", "new": "draft"}, "reason": reason.strip()})  # fmt: skip
+    return document
+
+
+async def submit_document(session: AsyncSession, document_id: uuid.UUID, actor: Actor) -> Document:
+    document = await get_document(session, document_id)
+    if document.status != "draft":
+        raise ContentError(f"Only drafts can be submitted (status is {document.status}).")
+    document.status = "pending"
+    await session.flush()
+    _audit(session, actor, document.institution_id, "update", "documents", document.id,
+           {"status": {"old": "draft", "new": "pending"}})  # fmt: skip
+    return document
+
+
+async def archive_document(session: AsyncSession, document_id: uuid.UUID, actor: Actor) -> Document:
+    document = await get_document(session, document_id)
+    if document.status == "archived":
+        raise ContentError("The document is already archived.")
+    old = document.status
+    document.status = "archived"
+    await session.flush()
+    _audit(session, actor, document.institution_id, "archive", "documents", document.id,
+           {"status": {"old": old, "new": "archived"}})  # fmt: skip
+    await index_document(session, document, None)  # removes its chunks
+    return document
 
 
 # --- one-time website import (pending documents, D1 note and D6) -------------------------
@@ -334,13 +394,25 @@ class ImportPreview:
     errors: list[str]
 
 
+IMPORT_MODELS: dict[str, type[SeedRow]] = {"timetable": TimetableRow, "faculty": FacultyRow}
+
+
 def preview_csv(kind: str, path: Path) -> ImportPreview:
     """Validate every row and report all errors (not just the first) before importing."""
-    models: dict[str, type[SeedRow]] = {"timetable": TimetableRow, "faculty": FacultyRow}
-    model = models[kind]
+    return preview_rows(kind, read_csv(path))
+
+
+def preview_csv_text(kind: str, text: str) -> ImportPreview:
+    """Same as preview_csv, for an uploaded file (admin portal, DATA-2)."""
+    reader = csv.DictReader(io.StringIO(text.lstrip("\ufeff")))
+    return preview_rows(kind, [dict(row) for row in reader])
+
+
+def preview_rows(kind: str, raw_rows: list[dict[str, Any]]) -> ImportPreview:
+    model = IMPORT_MODELS[kind]
     rows: list[SeedRow] = []
     errors: list[str] = []
-    for number, raw in enumerate(read_csv(path), start=2):  # line 1 is the header
+    for number, raw in enumerate(raw_rows, start=2):  # line 1 is the header
         try:
             rows.append(model.model_validate(raw))
         except ValidationError as exc:
@@ -355,14 +427,24 @@ def preview_csv(kind: str, path: Path) -> ImportPreview:
 
 
 async def import_rows(
-    session: AsyncSession, institution_id: uuid.UUID, kind: str, rows: list[SeedRow], actor: Actor
+    session: AsyncSession,
+    institution_id: uuid.UUID,
+    kind: str,
+    rows: list[SeedRow],
+    actor: Actor,
+    *,
+    department_id: uuid.UUID | None = None,
 ) -> UpsertStats:
+    """Upsert validated rows. `department_id` (portal imports) tags timetable rows with the
+    importing department (AUTH-3 scope)."""
     stats = UpsertStats()
     for row in rows:
         if isinstance(row, TimetableRow):
             key_fields = ("program", "semester", "section", "day", "start_time", "course_name")
             key = {f: getattr(row, f) for f in key_fields}
             values = row.model_dump(exclude=set(key_fields))
+            if department_id is not None:
+                values["department_id"] = department_id
             model: type[Any] = Timetable
         elif isinstance(row, FacultyRow):
             key = {"name": row.name}
@@ -382,6 +464,7 @@ async def import_rows(
             values=values,
             institution_id=institution_id,
             actor_label=actor.label,
+            actor_id=actor.user_id,
         )
         stats.add(outcome, obj.id)
     return stats

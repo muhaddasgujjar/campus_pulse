@@ -48,6 +48,11 @@ class Profile(Timestamps, Base):
     department_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("departments.id", ondelete="SET NULL")
     )
+    # Staff scope (AUTH-3): staff edit rows of their department or their office.
+    office_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("offices.id", ondelete="SET NULL")
+    )
+    email: Mapped[str | None] = mapped_column(Text)  # staff and admin only (ADM-4)
     is_active: Mapped[bool] = mapped_column(Boolean, server_default="true")
     program: Mapped[str | None] = mapped_column(Text)
     semester: Mapped[int | None] = mapped_column(Integer)

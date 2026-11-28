@@ -10,20 +10,32 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models import Conversation, Message
 
 
+def can_use(conversation: Conversation, user_id: uuid.UUID | None) -> bool:
+    """A conversation linked to a signed-in user is theirs alone (AUTH-4). Unlinked ones are
+    readable by whoever holds the random id (anonymous chat, M3)."""
+    return conversation.user_id is None or conversation.user_id == user_id
+
+
 async def get_or_create_conversation(
     session: AsyncSession,
     institution_id: uuid.UUID,
     conversation_id: uuid.UUID | None,
     language: str | None = None,
+    user_id: uuid.UUID | None = None,
 ) -> Conversation:
-    """The client's conversation if it exists for this institution, else a new one.
+    """The client's conversation if it exists for this institution and this user may use it,
+    else a new one. A signed-in user claims an anonymous conversation they hold the id of.
 
     A client never chooses the id of a new conversation: ids are server generated."""
     if conversation_id is not None:
         found = await session.get(Conversation, conversation_id)
-        if found is not None and found.institution_id == institution_id:
+        if found is not None and found.institution_id == institution_id and can_use(found, user_id):
+            if found.user_id is None and user_id is not None:
+                found.user_id = user_id
             return found
-    conversation = Conversation(institution_id=institution_id, channel="web", language=language)
+    conversation = Conversation(
+        institution_id=institution_id, channel="web", language=language, user_id=user_id
+    )
     session.add(conversation)
     await session.flush()
     return conversation
@@ -77,9 +89,15 @@ async def list_messages(
 
 
 async def assistant_messages_after(
-    session: AsyncSession, conversation_id: uuid.UUID, last_message_id: uuid.UUID | None
+    session: AsyncSession,
+    conversation_id: uuid.UUID,
+    last_message_id: uuid.UUID | None,
+    user_id: uuid.UUID | None = None,
 ) -> Sequence[Message]:
     """Assistant messages the client has not seen (resume after a dropped socket, CHAT-9)."""
+    conversation = await session.get(Conversation, conversation_id)
+    if conversation is None or not can_use(conversation, user_id):
+        return []
     stmt = select(Message).where(
         Message.conversation_id == conversation_id, Message.role == "assistant"
     )

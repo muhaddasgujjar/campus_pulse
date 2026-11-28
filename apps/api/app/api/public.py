@@ -22,6 +22,7 @@ class PublicConfig(BaseModel):
     short_name: str | None = None
     disclaimer: str
     starter_questions: list[str] = []
+    dev_auth: bool = False  # laptop only: the web app signs in through /api/auth/dev-login
 
 
 @router.get("/config", response_model=PublicConfig)
@@ -31,7 +32,9 @@ async def public_config(
     """Institution text for the web app. Never returns secrets. Without a database (or if it
     is unreachable) the page still loads: starter questions are then empty."""
     config = PublicConfig(
-        institution_slug=settings.institution_slug, disclaimer=settings.institution_disclaimer
+        institution_slug=settings.institution_slug,
+        disclaimer=settings.institution_disclaimer,
+        dev_auth=settings.dev_auth,
     )
     services: ChatServices | None = getattr(request.app.state, "chat", None)
     if services is None or services.sessionmaker is None:
@@ -55,5 +58,7 @@ async def public_config(
             "institution_name": institution.name,
             "short_name": extra.get("short_name"),
             "starter_questions": questions,
+            # an admin's edit in Settings (ADP-2) wins over the environment default
+            "disclaimer": str(extra.get("disclaimer") or config.disclaimer),
         }
     )

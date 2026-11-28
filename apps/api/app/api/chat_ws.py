@@ -1,7 +1,8 @@
 """WebSocket `/ws/chat` (CHAT-2, CHAT-9, Architectural.md Section 8).
 
-Client to server: `user_message`, `resume`, `ping`, and `auth` (accepted and ignored until
-Supabase JWT verification in M5: everyone chats anonymously, rate-limited by IP).
+Client to server: `user_message`, `resume`, `ping`, and `auth`. `auth` carries a Supabase access
+token (AUTH-2, AUTH-4): once verified, new conversations are linked to that student and only
+they can read them back. Without it the chat is anonymous, rate-limited by IP.
 Server to client: `ack`, `status`, `sources`, `token`, `final`, `error`, `pong`.
 
 Browsers do not apply CORS to WebSockets, so the `Origin` header is checked against
@@ -15,6 +16,7 @@ from typing import Annotated, Any, Literal
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
+from app.core.auth import AuthError, TokenVerifier
 from app.core.logging import get_logger
 from app.services.chat import ChatServices, error_event, replay_missed, run_turn
 
@@ -84,6 +86,8 @@ async def chat_socket(websocket: WebSocket) -> None:
     await websocket.accept()
     send = Sender(websocket)
     client_key = websocket.client.host if websocket.client else "unknown"
+    verifier: TokenVerifier = websocket.app.state.auth
+    user_id: uuid.UUID | None = None
     try:
         while True:
             raw = await websocket.receive_text()
@@ -98,13 +102,18 @@ async def chat_socket(websocket: WebSocket) -> None:
             if isinstance(message, Ping):
                 await send({"type": "pong"})
             elif isinstance(message, Auth):
-                pass  # M5: verify the Supabase JWT here (AUTH-2). Anonymous until then.
+                try:
+                    user_id = (await verifier.verify(message.token)).user_id
+                except AuthError:
+                    user_id = None
+                    await send(error_event("auth_failed", "Please sign in again."))
             elif isinstance(message, Resume):
                 await replay_missed(
                     services,
                     send,
                     conversation_id=message.conversation_id,
                     last_message_id=message.last_message_id,
+                    user_id=user_id,
                 )
             else:
                 await run_turn(
@@ -114,6 +123,7 @@ async def chat_socket(websocket: WebSocket) -> None:
                     conversation_id=message.conversation_id,
                     text=message.text,
                     modality=message.modality,
+                    user_id=user_id,
                 )
     except WebSocketDisconnect:
         return

@@ -18,6 +18,11 @@ NAMING_CONVENTION = {
 
 class Base(DeclarativeBase):
     metadata = MetaData(naming_convention=NAMING_CONVENTION)
+    # Fetch values the database sets (updated_at on UPDATE, ids and defaults on INSERT) with
+    # RETURNING in the same statement. Otherwise they expire after the flush, and reading one
+    # later (e.g. in an API response after the transaction) needs a lazy load, which async
+    # sessions cannot do (MissingGreenlet).
+    __mapper_args__ = {"eager_defaults": True}  # noqa: RUF012 - typed by SQLAlchemy
 
 
 class UUIDPk:

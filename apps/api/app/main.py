@@ -6,13 +6,25 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import chat, chat_ws, health, public, voice
+from app.api import (
+    account,
+    admin_content,
+    admin_people,
+    admin_tables,
+    chat,
+    chat_ws,
+    health,
+    public,
+    voice,
+)
+from app.core.auth import TokenVerifier
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging, get_logger
 from app.core.middleware import RequestContextMiddleware
 from app.core.redis import create_redis
 from app.db.session import create_engine
 from app.services.chat import build_chat_services
+from app.services.users import build_auth_admin
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -52,6 +64,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         redoc_url=None,
     )
     app.dependency_overrides[get_settings] = lambda: settings
+    app.state.auth = TokenVerifier(settings)
+    app.state.auth_admin = build_auth_admin(settings)
 
     if settings.cors_origins:
         app.add_middleware(
@@ -68,6 +82,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(chat.router)
     app.include_router(voice.router)
     app.include_router(chat_ws.router)
+    app.include_router(account.router)
+    app.include_router(admin_content.router)
+    app.include_router(admin_tables.router)
+    app.include_router(admin_people.router)
     return app
 
 

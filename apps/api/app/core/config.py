@@ -7,7 +7,7 @@ keys and thresholds are never hardcoded elsewhere. See `apps/api/.env.example`.
 from functools import lru_cache
 from typing import Annotated, Literal
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 DEFAULT_DISCLAIMER = (
@@ -52,7 +52,12 @@ class Settings(BaseSettings):
     # --- supabase (server-side only; never expose to the web app) ---
     supabase_url: str | None = None
     supabase_service_role_key: SecretStr | None = None
-    supabase_jwt_secret: SecretStr | None = None
+    supabase_jwt_secret: SecretStr | None = None  # legacy HS256 secret; JWKS is used for ES256
+    supabase_jwt_audience: str = "authenticated"
+    supabase_timeout_seconds: float = Field(default=10, gt=0)
+    # Local only (AUTH-2): with no Supabase project, `make api-local` signs HS256 tokens with
+    # SUPABASE_JWT_SECRET so the admin portal can be used on a laptop. Refused elsewhere.
+    dev_auth: bool = False
 
     # --- redis (Upstash) ---
     redis_url: str | None = None
@@ -116,6 +121,12 @@ class Settings(BaseSettings):
         if value is None or (isinstance(value, str) and not value.strip()):
             return DEFAULT_DISCLAIMER
         return value
+
+    @model_validator(mode="after")
+    def _dev_auth_only_locally(self) -> "Settings":
+        if self.dev_auth and self.app_env not in ("local", "test"):
+            raise ValueError("DEV_AUTH is allowed only with APP_ENV=local or test")
+        return self
 
     @field_validator("cors_origins", "llm_providers", mode="before")
     @classmethod
