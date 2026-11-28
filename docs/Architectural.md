@@ -49,7 +49,7 @@ Verified Oct 2026. Limits change, so re-check them in week 1 and record them in 
 | Database, vectors, auth, storage | Supabase Free | 500 MB database, 1 GB storage, 50,000 monthly users, 2 projects, **pauses after 7 days of inactivity, no automatic backups** | Retention purge, size alert, keep-alive, export button |
 | Cache, rate limit | Upstash Redis Free | 256 MB, 500,000 commands per month, 1 database | Budget at most 10 commands per turn. In-process fallback |
 | LLM | Gemini API free tier (a Flash-Lite model for planning, a Flash model for answers) | Per-model limits are **not published**. Check AI Studio for your project. Free-tier data may be used by Google to improve its products | Quota guard, cache, template answers, optional second provider |
-| Embeddings | `gemini-embedding-001`, 768 dimensions | Free tier, shares quota pressure | Embedding cache. Batch on ingest |
+| Embeddings | `gemini-embedding-001`, 768 dimensions, or `text-embedding-3-small` (OpenAI, paid, same 768 dimensions; amended D17) | Free tier, shares quota pressure (Gemini); billed per token (OpenAI) | Embedding cache. Batch on ingest |
 | Speech to text | Browser Web Speech API (primary). Gemini audio input (fallback) | Free | Fallback adapter when the browser lacks support |
 | Text to speech | Browser `speechSynthesis` | Free, voice list depends on the device | Show text only if no voice |
 | Agent | LangGraph with the `google-genai` SDK (or `langchain-google-genai`) behind an `LLMProvider` interface | n/a | Swap provider by env |
@@ -201,7 +201,7 @@ fallback → log unanswered_queries → END
 ### Provider abstraction
 ```
 LLMProvider.generate(prompt, model_tier, stream, json_schema=None)
-providers (env LLM_PROVIDERS): gemini → (optional second free provider) → template
+providers (env LLM_PROVIDERS): groq (free) → openai (paid backup, gpt-5-nano, daily cap) → gemini → template
 ```
 Model IDs come from env (`LLM_MODEL_FAST`, `LLM_MODEL_MAIN`). Pick them from AI Studio's current free list in week 1 and record them in `Memory.md`. Development and tests use a **fake LLM**, so they do not burn quota.
 
@@ -232,7 +232,7 @@ Every tool returns `{data, sources[], last_verified, owner}`. If `student_profil
 ## 7. Retrieval and Ingestion
 
 - **Chunking:** split by headings, 400 to 600 tokens, 10 to 15% overlap. A Q&A entry is one chunk. Attach metadata for citations.
-- **Embeddings:** `gemini-embedding-001` with `output_dimensionality = 768`, document task type on ingest, query task type on search. Normalize vectors. Store the model name in `metadata`. Changing model or dimension requires a migration and a full re-embed.
+- **Embeddings:** `gemini-embedding-001` with `output_dimensionality = 768`, document task type on ingest, query task type on search. Normalize vectors. Store the model name in `metadata`. Changing model or dimension requires a migration and a full re-embed. `text-embedding-3-small` is requested at 768 dimensions (`dimensions`), so it fits the same column; switching providers needs a full re-embed (`app.cli reindex`), never a mix.
 - **Ingestion on a 512 MB server:** run inside the API process as a background task, one document at a time, PDF size limit 10 MB, text PDFs only (PyMuPDF). Embed in small batches with backoff on quota errors, and show progress in the admin UI.
 - **Search:** `hybrid_search` SQL function (Section 5). Take the top 5. Optional LLM rerank behind a flag, default off.
 - **Re-embed:** triggered by approve and edit. Delete old chunks of that entry and insert new ones in one transaction.
@@ -264,7 +264,7 @@ Server to client:
 - **`final.office`** carries the fallback card's office (name, phones, email, hours) when `fallback` is true.
 - **Resume (CHAT-9):** after a reconnect the client sends `resume` with the last `message_id` it received. The server replays later answers (`final.replay: true`). A turn always finishes and is stored even if the socket closes midway.
 - **Origin check:** browsers do not apply CORS to WebSockets, so the server closes connections whose `Origin` is not in `CORS_ORIGINS` (code 1008).
-- **Until M5**, `auth` is accepted and ignored: everyone chats anonymously, rate-limited by IP. Holding a conversation id is what allows reading its history, so ids are random UUIDs and never listed.
+- **`auth` (M5):** the client may send `{type: "auth", token}` first. A valid Supabase token links new conversations to that user (an anonymous conversation they send the id of is claimed); such conversations can then be read or resumed only with that user's token. A bad token gets `error` with code `auth_failed` and the chat stays anonymous. Anonymous conversations remain readable by whoever holds the id (random UUIDs, never listed).
 - On a cold start the client retries with backoff and shows the "waking up" state.
 
 ### REST (prefix `/api`)
@@ -273,8 +273,9 @@ Server to client:
 | Session | `GET /me` (profile and role), `PUT /me/profile`, `DELETE /me/data` |
 | Chat | `GET /conversations/{id}/messages`, `POST /feedback` |
 | Voice (fallback only) | `POST /voice/transcribe?lang=en\|ur` (raw audio body with its Content-Type, processed in memory, returns `{transcript}`) |
-| Public | `GET /deadlines/upcoming`, `GET /config` |
-| Admin | `/admin/kb`, `/admin/documents`, `/admin/faculty`, `/admin/timetable` (+ `/import`), `/admin/fees`, `/admin/offices`, `/admin/key-dates`, `/admin/approvals`, `/admin/unanswered`, `/admin/users` (uses the Supabase Admin API), `/admin/audit`, `/admin/metrics`, `/admin/usage`, `/admin/export` |
+| Public | `GET /deadlines`, `GET /config` |
+| Admin | `/admin/kb`, `/admin/documents` (+ `/preview`), `/admin/tables/{faculty,timetable,fees,offices,key-dates}`, `/admin/import/{timetable,faculty}`, `/admin/approvals`, `/admin/review`, `/admin/unanswered`, `/admin/lookups`, `/admin/users` (uses the Supabase Admin API), `/admin/audit`, `/admin/metrics` (includes today's usage), `/admin/settings`. `/admin/export` comes in M6 |
+| Local only | `POST /auth/dev-login` (`DEV_AUTH`, refused outside `APP_ENV=local`/`test`) |
 | Internal jobs | `POST /internal/jobs/daily` (secret header, called by GitHub Actions): retention purge, expiry reminders, usage rollup, Supabase keep-alive |
 | Ops | `GET /healthz` (instant, no DB), `/readyz` (checks DB and Redis), `/metrics` |
 
@@ -333,7 +334,7 @@ The server sees text only, so live mode costs no extra server resources. The Gem
 - The Supabase **service role key and database URL exist only on the server**. The frontend gets only the public URL and anon key, which can access nothing because of deny-by-default RLS.
 - Staff accounts are created by an admin through the Supabase Admin API with the email already confirmed, so no email sending is needed.
 - Parameterized queries only. The LLM never produces SQL.
-- File upload checks: type, size, magic bytes, text extraction only, no execution.
+- File upload checks: type, size, magic bytes, text extraction only, no execution. Accepted: text PDFs (pypdf) and Word .docx (standard-library zip + XML: no macros, no DOCTYPE or entities, unpacked size capped against zip bombs; old .doc and password-protected files refused).
 - Live fetch: allowlist of hosts, no redirects off the allowlist, response size cap, HTML to text only.
 - Prompt-injection defense: retrieved text is wrapped as data, tests include hostile entries.
 - CORS locked to the Vercel origin. Security headers. Secrets only in Render and Vercel environment variables and GitHub secrets.

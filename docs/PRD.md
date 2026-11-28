@@ -73,7 +73,7 @@ Campus Pulse AI gives LGU students fast, personalised support through a **WhatsA
 
 | Priority | Items |
 |---|---|
-| **Must** | WhatsApp-style chat with WebSocket streaming, RAG plus structured tools, certified KB with approval workflow, document upload (text PDFs), fallback, citations and verified badges, voice messages (STT, TTS), admin portal with RBAC and audit log, Redis (sessions, rate limit, cache), Docker, free-tier deployment (Vercel, Render, Supabase) with CI/CD, monitoring, golden-set evaluation |
+| **Must** | WhatsApp-style chat with WebSocket streaming, RAG plus structured tools, certified KB with approval workflow, document upload (text PDFs and Word .docx), fallback, citations and verified badges, voice messages (STT, TTS), admin portal with RBAC and audit log, Redis (sessions, rate limit, cache), Docker, free-tier deployment (Vercel, Render, Supabase) with CI/CD, monitoring, golden-set evaluation |
 | **Should** | Student profile (program, semester, section) for personalised answers, upcoming-deadlines card, live-fetch tool for volatile pages, live conversational voice mode (hands-free), Urdu and Roman Urdu quality pass, expiry review queue, unanswered-questions queue |
 | **Could** | WebRTC-based live agent, LGU-email OTP to verify a student, deadline reminders (email or push), weekly "page changed" alerts, 3D avatar |
 | **Won't** | See Non-Goals |
@@ -136,7 +136,7 @@ Priority key: **M** Must, **S** Should, **C** Could. IDs are referenced by tests
 |---|---|---|
 | DATA-1 | CRUD for knowledge entries, faculty, timetable, fees, offices, key dates | M |
 | DATA-2 | CSV import for timetable and faculty with a validation preview | M |
-| DATA-3 | Upload text PDFs. Extract text, preview, require title, category, department and expiry date. Chunk and embed after approval | M |
+| DATA-3 | Upload text PDFs or Word (.docx) files. Extract text, preview, require title, category, department and expiry date. Chunk and embed after approval | M |
 | DATA-4 | Approval workflow: staff submits (`pending`), admin approves or rejects with a comment | M |
 | DATA-5 | Approving or editing an entry re-chunks and re-embeds it, live within seconds | M |
 | DATA-6 | "Needs review" queue: entries expiring in 14 days or expired | S |

@@ -1,9 +1,8 @@
 """Chat REST endpoints (Architectural.md Section 8): conversation history (CHAT-1, CHAT-9) and
-feedback (CHAT-4). Anonymous until M5: a conversation id (random UUID, never listed) is what
-allows reading its history."""
+feedback (CHAT-4). An anonymous conversation is readable by whoever holds its id (random
+UUID, never listed); once a signed-in student uses it, only their token can read it (AUTH-4)."""
 
 import uuid
-from collections.abc import AsyncIterator
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
@@ -12,6 +11,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.deps import OptionalUser, chat_services, db_session
 from app.core.redact import redact
 from app.db.models import Conversation, Feedback, Message
 from app.db.repositories import conversations as repo
@@ -24,20 +24,6 @@ FEEDBACK_REASONS = {
     "outdated": "The information is outdated",
     "not_helpful": "It did not answer my question",
 }
-
-
-def chat_services(request: Request) -> ChatServices:
-    services: ChatServices = request.app.state.chat
-    return services
-
-
-async def db_session(
-    services: Annotated[ChatServices, Depends(chat_services)],
-) -> AsyncIterator[AsyncSession]:
-    if services.sessionmaker is None:
-        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "database not configured")
-    async with services.sessionmaker() as session:
-        yield session
 
 
 class MessageOut(BaseModel):
@@ -53,9 +39,12 @@ class MessageOut(BaseModel):
 async def conversation_messages(
     conversation_id: uuid.UUID,
     session: Annotated[AsyncSession, Depends(db_session)],
+    user: OptionalUser,
 ) -> list[MessageOut]:
-    """The latest 100 messages, oldest first (reload and reconnect, CHAT-9)."""
-    if await session.get(Conversation, conversation_id) is None:
+    """The latest 100 messages, oldest first (reload and reconnect, CHAT-9). A conversation
+    linked to a signed-in student is readable only with that student's token."""
+    conversation = await session.get(Conversation, conversation_id)
+    if conversation is None or not repo.can_use(conversation, user.user_id if user else None):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "conversation not found")
     rows = await repo.list_messages(session, conversation_id)
     return [

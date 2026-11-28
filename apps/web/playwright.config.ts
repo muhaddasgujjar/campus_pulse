@@ -1,7 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
 /**
- * Playwright smoke tests for the chat (M3). `npm run e2e` (or `make e2e`) starts:
+ * Playwright smoke tests for the chat (M3) and the admin portal (M5). `npm run e2e` (or `make e2e`) starts:
  * - the API on :8001 with no cloud (app.devtools.serve: embedded Postgres, migrated and seeded,
  *   its own `campus_pulse_e2e` database, templates instead of an LLM so answers are repeatable),
  * - the web app on :3001 pointing at it.
@@ -40,6 +40,7 @@ export default defineConfig({
         STT_MODEL: "fake",
         REDIS_URL: "",
         RESPONSE_CACHE_TTL_SECONDS: "0",
+        SUPABASE_URL: "", // always local sign-in (DEV_AUTH), whatever a dev machine has set
       },
     },
     {
@@ -51,6 +52,7 @@ export default defineConfig({
         NEXT_PUBLIC_API_URL: `http://localhost:${API_PORT}`,
         NEXT_PUBLIC_WS_URL: `ws://localhost:${API_PORT}`,
         NEXT_TELEMETRY_DISABLED: "1",
+        NEXT_PUBLIC_SUPABASE_URL: "", // local sign-in through the API's dev-login
       },
     },
   ],

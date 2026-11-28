@@ -48,7 +48,13 @@ log = get_logger("chat")
 
 Emit = Callable[[dict[str, Any]], Awaitable[None]]
 ErrorCode = Literal[
-    "rate_limited", "busy", "provider_down", "internal", "invalid_message", "unavailable"
+    "rate_limited",
+    "busy",
+    "provider_down",
+    "internal",
+    "invalid_message",
+    "unavailable",
+    "auth_failed",
 ]
 WORDS_PER_TOKEN_EVENT = 3
 
@@ -174,6 +180,7 @@ async def run_turn(
     conversation_id: uuid.UUID | None,
     text: str,
     modality: Literal["text", "voice"] = "text",
+    user_id: uuid.UUID | None = None,
 ) -> None:
     settings = services.settings
     decision = await services.rate_limiter.hit(f"chat:{client_key}")
@@ -200,7 +207,7 @@ async def run_turn(
         await emit(error_event("unavailable", "The assistant is unavailable right now."))
         return
     try:
-        await _answer(services, emit, conversation_id, text, modality)
+        await _answer(services, emit, conversation_id, text, modality, user_id)
     except (OperationalError, DBAPIError, OSError) as exc:
         log.error("chat_database_unavailable", error=type(exc).__name__)
         await emit(error_event("unavailable", "The assistant is unavailable right now."))
@@ -215,6 +222,7 @@ async def _answer(
     conversation_id: uuid.UUID | None,
     text: str,
     modality: Literal["text", "voice"],
+    user_id: uuid.UUID | None = None,
 ) -> None:
     assert services.sessionmaker is not None
     redacted = redact(text)  # stored, logged and remembered only in redacted form (SEC-3)
@@ -229,7 +237,7 @@ async def _answer(
                 today=services.today(),
             )
             conversation = await repo.get_or_create_conversation(
-                session, deps.institution_id, conversation_id
+                session, deps.institution_id, conversation_id, user_id=user_id
             )
             question = await repo.add_message(
                 session, conversation.id, "user", redacted, modality=modality
@@ -300,13 +308,14 @@ async def replay_missed(
     *,
     conversation_id: uuid.UUID,
     last_message_id: uuid.UUID | None,
+    user_id: uuid.UUID | None = None,
 ) -> None:
     """Send the answers stored after `last_message_id` (resume, CHAT-9)."""
     if services.sessionmaker is None:
         return
     async with services.sessionmaker() as session:
         missed: Sequence[Message] = await repo.assistant_messages_after(
-            session, conversation_id, last_message_id
+            session, conversation_id, last_message_id, user_id
         )
     for message in missed:
         await _send_answer(

@@ -149,15 +149,17 @@ def rule_plan(query: str, profile: StudentProfile | None, today: date) -> Plan:
     if _FEE.search(text) and program:
         return Plan(intent="structured", tool="get_fee", args={"program_group": program})
 
+    # A titled name ("Dr Ayesha Khan", "Prof. Ali") is a teacher, even when the question asks for
+    # an email or a room, which would otherwise read as an office question.
+    name = _NAME.search(text)
+    if name:
+        return Plan(intent="structured", tool="find_faculty", args={"name": name.group(1)})
+    course = _COURSE.search(text)
+    if _FACULTY.search(text) and course:
+        return Plan(intent="structured", tool="find_faculty", args={"course": course.group(1)})
+
     if _OFFICE.search(text):
         return Plan(intent="structured", tool="get_office", args={"name_or_topic": text[:120]})
-
-    if _FACULTY.search(text):
-        name = _NAME.search(text)
-        course = _COURSE.search(text)
-        if name or course:
-            faculty_args = {"name": name.group(1)} if name else {"course": course.group(1)}  # type: ignore[union-attr]
-            return Plan(intent="structured", tool="find_faculty", args=faculty_args)
 
     return Plan(intent="knowledge", retrieval_query=text)
 
@@ -179,9 +181,24 @@ def is_follow_up(query: str) -> bool:
     return len(query.split()) <= 8 and bool(_FOLLOW_UP.search(query))
 
 
+# Words that do not name a subject in an opening-hours question.
+_HOURS_FILLER = frozenset([
+    "what", "are", "is", "the", "a", "an", "of", "for", "when", "does", "do", "did", "will",
+    "can", "i", "we", "you", "to", "at", "on", "in", "by", "from", "till", "until", "open",
+    "opens", "opening", "close", "closes", "closing", "timing", "timings", "time", "times",
+    "hour", "hours", "working", "office", "offices", "campus", "university", "lgu", "today",
+    "tomorrow", "day", "days", "daily", "week", "weekend", "weekdays", "morning", "evening",
+    "please", "tell", "me", "about", "kya", "hai", "hain", "ka", "ki", "ke", "kab"
+]) | frozenset(_DAYS)  # fmt: skip
+
+
 def asks_office_hours(query: str) -> bool:
-    """'What are the office timings?': opening hours without naming an office."""
-    return bool(_OFFICE_HOURS.search(query))
+    """'What are the office timings?': opening hours without naming an office or any other
+    subject. 'What are the library timings?' names a subject, so it is not."""
+    if not _OFFICE_HOURS.search(query):
+        return False
+    words = re.findall(r"[a-z]+", query.lower())
+    return not [w for w in words if len(w) > 2 and w not in _HOURS_FILLER]
 
 
 # --- LLM planning ----------------------------------------------------------------------------

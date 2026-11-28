@@ -15,6 +15,7 @@ import { useCallback, useEffect, useReducer, useRef } from "react";
 
 import { type FeedbackReason, fetchHistory, sendFeedback } from "@/lib/chat/api";
 import { ChatSocket, type SocketOptions } from "@/lib/chat/socket";
+import { getAccessToken } from "@/lib/auth";
 import {
   awaitingAnswer,
   type ChatState,
@@ -58,12 +59,16 @@ export type UseChatOptions = {
   wsUrl?: string;
   apiUrl?: string;
   socket?: SocketOptions;
+  /** The signed-in student's token, if any (AUTH-4). Defaults to the browser session. */
+  getToken?: () => Promise<string | null>;
 };
 
 export function useChat(options: UseChatOptions = {}) {
   const wsUrl = options.wsUrl ?? publicConfig.wsUrl;
   const apiUrl = options.apiUrl ?? publicConfig.apiUrl;
   const socketOptions = options.socket;
+  const getToken = options.getToken ?? getAccessToken;
+  const token = useRef<string | null>(null);
   const [state, dispatch] = useReducer(chatReducer, undefined, () => initialState());
   const stateRef = useRef<ChatState>(state);
   const socketRef = useRef<ChatSocket | null>(null);
@@ -113,13 +118,19 @@ export function useChat(options: UseChatOptions = {}) {
     if (loaded.current) return;
     loaded.current = true;
     const saved = loadSaved();
-    if (!saved.conversationId) return;
-    void fetchHistory(saved.conversationId, apiUrl).then((messages) => {
-      if (messages && saved.conversationId) {
-        dispatch({ type: "history", messages, conversationId: saved.conversationId });
-      }
-    });
-  }, [apiUrl]);
+    void getToken()
+      .catch(() => null)
+      .then((found) => {
+        token.current = found;
+        if (found) socketRef.current?.send({ type: "auth", token: found });
+        if (!saved.conversationId) return;
+        void fetchHistory(saved.conversationId, apiUrl, found).then((messages) => {
+          if (messages && saved.conversationId) {
+            dispatch({ type: "history", messages, conversationId: saved.conversationId });
+          }
+        });
+      });
+  }, [apiUrl, getToken]);
 
   // The socket lives as long as the chat screen.
   useEffect(() => {
@@ -135,6 +146,8 @@ export function useChat(options: UseChatOptions = {}) {
         onConnection: (connection) => dispatch({ type: "connection", connection }),
         onOpen: (reconnected) => {
           inFlight.current.clear(); // nothing unacknowledged survived the old socket
+          // Who is asking goes first, so new chats are linked to the signed-in student.
+          if (token.current) socket.send({ type: "auth", token: token.current });
           flush();
           if (!reconnected) return;
           resume();
@@ -226,5 +239,11 @@ export function useChat(options: UseChatOptions = {}) {
 
   const dismissNotice = useCallback(() => dispatch({ type: "dismissNotice" }), []);
 
-  return { state, send, retry, rate, newChat, dismissNotice };
+  /** After the student signs in or out: later questions are linked to the new identity. */
+  const setAuthToken = useCallback((next: string | null) => {
+    token.current = next;
+    if (next) socketRef.current?.send({ type: "auth", token: next });
+  }, []);
+
+  return { state, send, retry, rate, newChat, dismissNotice, setAuthToken };
 }

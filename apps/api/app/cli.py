@@ -1,18 +1,21 @@
-"""Command line for data tasks: the minimal admin path until the M5 portal (Phases.md M2).
+"""Command line for data tasks and the first admin account (Phases.md M2, M5).
 
 Run from apps/api:  uv run python -m app.cli <command> ...   (see `--help` on each command)
 
 Database: DATABASE_URL from env/.env (your dev Supabase project). If it is not set, a local
 embedded Postgres (pgserver, dev only) is used and migrated automatically.
-Every write records an audit_log row with actor "cli:<os user>" (rule 7). Real user identity
-and RBAC come with Supabase Auth in M5; the CLI needs direct database access, which only
-admins have.
+Every write records an audit_log row with actor "cli:<os user>" (rule 7). The CLI needs direct
+database access, which only admins have; everyone else uses the admin portal (RBAC, AUTH-3).
+
+The first admin: `user add you@lgu.edu.pk --name "..." --role admin` creates the Supabase account
+(email pre-confirmed) and the profile. The password is read from NEW_USER_PASSWORD or prompted.
 """
 
 import argparse
 import asyncio
 import getpass
 import json
+import os
 import sys
 import uuid
 from collections.abc import Awaitable, Callable
@@ -22,14 +25,16 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.auth import AuthenticatedUser
 from app.core.config import get_settings
-from app.db.models import Document, KbEntry
+from app.db.models import Department, Document, KbEntry, Office, Profile
 from app.db.session import create_engine, create_sessionmaker
 from app.services import content_admin as admin
+from app.services import users
 from app.services.embeddings import build_embedder
 from app.services.ingestion import index_entry
-from app.services.pdf import PdfRejectedError
 from app.services.seeding import KbEntryRow, load_seed_dir
+from app.services.uploads import EXTENSIONS, UploadRejectedError
 
 Command = Callable[[AsyncSession, argparse.Namespace], Awaitable[int]]
 
@@ -165,10 +170,14 @@ async def cmd_import(session: AsyncSession, args: argparse.Namespace) -> int:
 
 async def cmd_doc_upload(session: AsyncSession, args: argparse.Namespace) -> int:
     settings = get_settings()
+    path = Path(args.file)
+    content_type = EXTENSIONS.get(path.suffix.lower())
+    if content_type is None:
+        raise UploadRejectedError("Upload a PDF or Word (.docx) file.")
     document = await admin.upload_document(
         session,
         await _institution(session),
-        await asyncio.to_thread(Path(args.pdf).read_bytes),
+        await asyncio.to_thread(path.read_bytes),
         title=args.title,
         category=args.category,
         owner_name=args.owner,
@@ -176,6 +185,7 @@ async def cmd_doc_upload(session: AsyncSession, args: argparse.Namespace) -> int
         expires_at=args.expires,
         max_mb=settings.pdf_max_mb,
         actor=actor(),
+        content_type=content_type,
     )
     preview = document.content[:400].replace("\n", " ")
     print(f"Uploaded pending document {document.id} ({len(document.content)} characters)")
@@ -242,6 +252,56 @@ async def cmd_reindex(session: AsyncSession, args: argparse.Namespace) -> int:
 # --- parser --------------------------------------------------------------------------------
 
 
+async def _named(
+    session: AsyncSession, model: type[Department] | type[Office], name: str
+) -> uuid.UUID:
+    found = (
+        await session.execute(select(model.id).where(model.name.ilike(name.strip())))
+    ).scalar_one_or_none()
+    if found is None:
+        raise admin.ContentError(f"No {model.__tablename__[:-1]} named {name!r}.")
+    return found
+
+
+async def cmd_user_add(session: AsyncSession, args: argparse.Namespace) -> int:
+    email = args.email.strip().lower()
+    existing = await session.execute(select(Profile.id).where(Profile.email == email))
+    if existing.scalar_one_or_none() is not None:
+        if args.if_missing:
+            print(f"{email} already exists.")
+            return 0
+        raise admin.ContentError("A user with this email already exists.")
+    provider = users.build_auth_admin(get_settings())
+    if provider is None:
+        raise admin.ContentError(
+            "Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (or DEV_AUTH=true on a laptop)."
+        )
+    password = os.environ.get("NEW_USER_PASSWORD") or (
+        "local-dev-only" if get_settings().dev_auth else getpass.getpass("Temporary password: ")
+    )
+    inst = await _institution(session)
+    cli_admin = AuthenticatedUser(
+        user_id=uuid.UUID(int=0), role="admin", is_anonymous=False, institution_id=inst,
+        email=actor().label,
+    )  # fmt: skip
+    new = users.NewStaff(
+        email=email,
+        password=password,
+        full_name=args.name,
+        role=args.role,
+        department_id=await _named(session, Department, args.department)
+        if args.department
+        else None,
+        office_id=await _named(session, Office, args.office) if args.office else None,
+    )
+    try:
+        profile = await users.create_staff(session, provider, cli_admin, new)
+    except users.AuthAdminError as exc:
+        raise admin.ContentError(str(exc)) from exc
+    print(f"Created {profile.role} {email} ({profile.id}).")
+    return 0
+
+
 def _date(value: str) -> date:
     return date.fromisoformat(value)
 
@@ -287,11 +347,11 @@ def build_parser() -> argparse.ArgumentParser:
     imp.add_argument("--commit", action="store_true")
     imp.set_defaults(func=cmd_import)
 
-    doc = sub.add_parser("doc", help="Documents: text PDFs and imported web pages").add_subparsers(
-        dest="doc_command", required=True
-    )
+    doc = sub.add_parser(
+        "doc", help="Documents: text PDFs, Word files and imported web pages"
+    ).add_subparsers(dest="doc_command", required=True)
     upload = doc.add_parser("upload", help="Extract text and create a pending document")
-    upload.add_argument("pdf")
+    upload.add_argument("file", help="a text PDF or a Word (.docx) file")
     upload.add_argument("--title", required=True)
     upload.add_argument("--category", required=True)
     upload.add_argument("--owner")
@@ -320,6 +380,18 @@ def build_parser() -> argparse.ArgumentParser:
 
     reindex = sub.add_parser("reindex", help="Re-chunk and re-embed all approved content")
     reindex.set_defaults(func=cmd_reindex)
+
+    user = sub.add_parser("user", help="Staff and admin accounts").add_subparsers(
+        dest="user_command", required=True
+    )
+    user_add = user.add_parser("add", help="Create a staff or admin account (email confirmed)")
+    user_add.add_argument("email")
+    user_add.add_argument("--name", required=True)
+    user_add.add_argument("--role", choices=["staff", "admin"], default="staff")
+    user_add.add_argument("--department", help="department name (staff scope)")
+    user_add.add_argument("--office", help="office name (staff scope)")
+    user_add.add_argument("--if-missing", action="store_true", help="do nothing if it exists")
+    user_add.set_defaults(func=cmd_user_add)
     return parser
 
 
@@ -327,7 +399,7 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         return asyncio.run(_run(args.func, args))
-    except (admin.ContentError, PdfRejectedError, ValueError) as exc:
+    except (admin.ContentError, UploadRejectedError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 

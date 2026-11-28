@@ -122,14 +122,14 @@ Review at the end of **W8** and **W11**. If behind, cut in this order:
 ### M5 · Admin Portal (W12-14)
 
 **Tasks**
-- [ ] Authentication with Supabase Auth: staff and admin sign in (accounts created by an admin through the Supabase Admin API, email pre-confirmed), students use anonymous sign-in, the API verifies the Supabase JWT and reads the role from `profiles`. RLS deny-by-default tests.
-- [ ] RBAC with tests (matrix in `Architectural.md` Section 11): staff limited to their department or office.
-- [ ] Admin UI per `DESIGN.md` Section 6.2: dashboard, content tabs, editor, upload, timetable import, approvals with diff, unanswered queue, users, audit log, settings.
-- [ ] Approval workflow and immediate re-embed on approval.
-- [ ] Expiry review queue and email or in-app reminder to owners.
-- [ ] Monitoring dashboard: questions per day, fallback rate, latency, thumbs, top questions.
-- [ ] Student accounts and profile (program, semester, section), "Delete my data".
-- [ ] Deadlines card from `key_dates`.
+- [x] Authentication with Supabase Auth: staff and admin sign in (accounts created by an admin through the Supabase Admin API, email pre-confirmed), students use anonymous sign-in, the API verifies the Supabase JWT and reads the role from `profiles`. RLS deny-by-default tests.
+- [x] RBAC with tests (matrix in `Architectural.md` Section 11): staff limited to their department or office.
+- [x] Admin UI per `DESIGN.md` Section 6.2: dashboard, content tabs, editor, upload, timetable import, approvals with diff, unanswered queue, users, audit log, settings.
+- [x] Approval workflow and immediate re-embed on approval.
+- [x] Expiry review queue and email or in-app reminder to owners.
+- [x] Monitoring dashboard: questions per day, fallback rate, latency, thumbs, top questions.
+- [x] Student accounts and profile (program, semester, section), "Delete my data".
+- [x] Deadlines card from `key_dates`.
 - [ ] Live-fetch tool with allowlist (Should), if not already done.
 - [ ] Onboard two real staff users and collect feedback.
 

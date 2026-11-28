@@ -41,6 +41,7 @@ async def upsert(
     values: dict[str, Any],
     institution_id: uuid.UUID,
     actor_label: str,
+    actor_id: uuid.UUID | None = None,
 ) -> tuple[ModelT, Outcome]:
     """Insert the row identified by `key`, or update the columns in `values` that changed."""
     stmt = select(model).filter_by(**key).limit(1)
@@ -59,6 +60,7 @@ async def upsert(
             row_id=row.id,  # type: ignore[attr-defined]
             diff={"new": {**key, **values}},
             actor_label=actor_label,
+            actor_id=actor_id,
         )
         return row, "created"
 
@@ -80,5 +82,6 @@ async def upsert(
         row_id=row.id,  # type: ignore[attr-defined]
         diff=changes,
         actor_label=actor_label,
+        actor_id=actor_id,
     )
     return row, "updated"

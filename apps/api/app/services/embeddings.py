@@ -2,6 +2,9 @@
 
 - GeminiEmbedder: google-genai SDK, document task type on ingest, query task type on search,
   vectors normalized (Gemini only normalizes its full 3072-dimension output).
+- OpenAIEmbedder (PAID, amended D17 2026-11-28): text-embedding-3-* over plain httpx, asked
+  for EMBEDDING_DIM dimensions so the vector(768) column stays. Chosen when EMBEDDING_MODEL
+  starts with "text-embedding-".
 - FakeEmbedder: deterministic hashed bag of words. No network, no quota. Tests and eval only.
 - CachedQueryEmbedder: in-process cache for query embeddings (moves to Redis in M3).
 The model name is stored with every chunk, so a model change is detectable (re-embed needed).
@@ -11,7 +14,10 @@ import hashlib
 import math
 import re
 from collections import OrderedDict
-from typing import Literal, Protocol
+from typing import TYPE_CHECKING, Literal, Protocol
+
+if TYPE_CHECKING:
+    import httpx
 
 from app.core.config import Settings
 from app.core.logging import get_logger
@@ -122,6 +128,70 @@ class GeminiEmbedder:
         return (await self._embed([text], "RETRIEVAL_QUERY"))[0]
 
 
+OPENAI_EMBEDDINGS_URL = "https://api.openai.com/v1/embeddings"
+
+
+def is_openai_embedding_model(model: str | None) -> bool:
+    return bool(model and model.startswith("text-embedding-"))
+
+
+class OpenAIEmbedder:
+    """OpenAI embeddings at a reduced dimension (text-embedding-3 models support `dimensions`).
+    The same vector space serves documents and queries (no task types)."""
+
+    def __init__(
+        self,
+        api_key: str,
+        model: str,
+        dim: int,
+        batch_size: int = 16,
+        *,
+        timeout_seconds: float = 25,
+        client: "httpx.AsyncClient | None" = None,
+    ) -> None:
+        import httpx
+
+        self._client = client or httpx.AsyncClient()
+        self._headers = {"Authorization": f"Bearer {api_key}"}
+        self.name = model
+        self.dim = dim
+        self._batch_size = batch_size
+        self._timeout = timeout_seconds
+
+    async def _embed(self, texts: list[str]) -> list[list[float]]:
+        import httpx
+
+        vectors: list[list[float]] = []
+        for start in range(0, len(texts), self._batch_size):
+            batch = texts[start : start + self._batch_size]
+            try:
+                response = await self._client.post(
+                    OPENAI_EMBEDDINGS_URL,
+                    json={"model": self.name, "input": batch, "dimensions": self.dim},
+                    headers=self._headers,
+                    timeout=self._timeout,
+                )
+            except httpx.HTTPError as exc:
+                raise EmbeddingError(f"embedding failed ({type(exc).__name__})") from exc
+            if response.status_code != 200:
+                raise EmbeddingError(f"embedding failed with status {response.status_code}")
+            data = sorted(response.json().get("data") or [], key=lambda d: d.get("index", 0))
+            if len(data) != len(batch):
+                raise EmbeddingError("embedding response size mismatch")
+            for item in data:
+                values = [float(v) for v in item.get("embedding") or []]
+                if len(values) != self.dim:
+                    raise EmbeddingError(f"expected {self.dim} dimensions, got {len(values)}")
+                vectors.append(normalize(values))
+        return vectors
+
+    async def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        return await self._embed(texts)
+
+    async def embed_query(self, text: str) -> list[float]:
+        return (await self._embed([text]))[0]
+
+
 class CachedQueryEmbedder:
     """Wraps an embedder with an LRU cache for queries (repeated questions cost nothing)."""
 
@@ -155,6 +225,19 @@ def build_embedder(settings: Settings) -> Embedder | None:
     model = settings.embedding_model
     if model == "fake":
         return CachedQueryEmbedder(FakeEmbedder(settings.embedding_dim))
+    if is_openai_embedding_model(model):
+        if settings.openai_api_key:
+            return CachedQueryEmbedder(
+                OpenAIEmbedder(
+                    settings.openai_api_key.get_secret_value(),
+                    model or "",
+                    settings.embedding_dim,
+                    settings.embedding_batch_size,
+                    timeout_seconds=settings.llm_timeout_seconds,
+                )
+            )
+        log.warning("embeddings_disabled", reason="EMBEDDING_MODEL is OpenAI but no OPENAI_API_KEY")
+        return None
     if model and settings.gemini_api_key:
         return CachedQueryEmbedder(
             GeminiEmbedder(

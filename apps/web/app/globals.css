@@ -29,6 +29,8 @@
   --color-info: var(--info);
   --color-mark-bg: var(--mark-bg);
   --color-mark-fg: var(--mark-fg);
+  --color-chart-1: var(--chart-1);
+  --color-chart-grid: var(--chart-grid);
 
   --font-sans: var(--font-body);
 }

@@ -10,6 +10,7 @@ export type PublicConfig = {
   short_name: string | null;
   disclaimer: string;
   starter_questions: string[];
+  dev_auth?: boolean;
 };
 
 type MessageOut = {
@@ -47,11 +48,12 @@ export async function fetchConfig(apiUrl = publicConfig.apiUrl): Promise<PublicC
 export async function fetchHistory(
   conversationId: string,
   apiUrl = publicConfig.apiUrl,
+  token: string | null = null,
 ): Promise<ChatMessage[] | null> {
   try {
     const response = await fetch(
       `${base(apiUrl)}/api/conversations/${encodeURIComponent(conversationId)}/messages`,
-      { cache: "no-store" },
+      { cache: "no-store", headers: token ? { Authorization: `Bearer ${token}` } : {} },
     );
     if (!response.ok) return null;
     const rows = (await response.json()) as MessageOut[];

@@ -52,6 +52,10 @@
   --duration-slow: 400ms;
   --ease-standard: cubic-bezier(0.2, 0.8, 0.2, 1);
 
+  /* charts (admin dashboard): one series hue, validated against --surface-1 (dataviz checks) */
+  --chart-1: #17a8b4;
+  --chart-grid: #343c44;
+
   /* typography (DESIGN.md Section 2.3); --font-montserrat is set by next/font in layout.tsx */
   --font-body: var(--font-montserrat), system-ui, sans-serif;
 }
@@ -75,6 +79,8 @@
   --text-on-primary: #0b1418; /* white on #0e8a95 is ~4.1:1 (fails AA) */
   --mark-bg: #ffffff;
   --glow-teal: 0 0 24px rgba(14, 138, 149, 0.2);
+  --chart-1: #00909c; /* #0e8a95 is too gray for a chart fill (chroma < 0.1) */
+  --chart-grid: #e3eaed;
 }
 
 /* Follow the OS preference unless the user picked a theme explicitly (data-theme).
@@ -97,6 +103,8 @@
     --text-on-primary: #0b1418; /* white on #0e8a95 is ~4.1:1 (fails AA) */
     --mark-bg: #ffffff;
     --glow-teal: 0 0 24px rgba(14, 138, 149, 0.2);
+    --chart-1: #00909c;
+    --chart-grid: #e3eaed;
   }
 }
 

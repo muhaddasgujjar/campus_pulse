@@ -15,17 +15,23 @@ from pypdf.errors import PyPdfError
 MIN_CHARS_PER_PAGE = 40
 
 
-class PdfRejectedError(ValueError):
-    """The upload is not an acceptable text PDF. The message is safe to show to staff."""
+class UploadRejectedError(ValueError):
+    """The upload is not an acceptable document. The message is safe to show to staff."""
+
+
+PdfRejectedError = UploadRejectedError  # the original name, kept for existing callers
 
 
 @dataclass(frozen=True)
-class ExtractedPdf:
+class ExtractedText:
     text: str
-    pages: int
+    pages: int | None  # None for Word files: pages depend on the reader's layout
 
 
-def extract_pdf_text(data: bytes, max_mb: int) -> ExtractedPdf:
+ExtractedPdf = ExtractedText
+
+
+def extract_pdf_text(data: bytes, max_mb: int) -> ExtractedText:
     if len(data) > max_mb * 1024 * 1024:
         raise PdfRejectedError(f"File is larger than {max_mb} MB.")
     if not data.startswith(b"%PDF-"):
@@ -44,4 +50,4 @@ def extract_pdf_text(data: bytes, max_mb: int) -> ExtractedPdf:
             "This PDF has little or no text (it looks scanned). OCR is not supported: "
             "please type the content in as a knowledge entry."
         )
-    return ExtractedPdf(text=text, pages=len(pages))
+    return ExtractedText(text=text, pages=len(pages))

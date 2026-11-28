@@ -57,6 +57,10 @@ class Timetable(UUIDPk, Timestamps, Base):
     program: Mapped[str] = mapped_column(Text)
     semester: Mapped[int] = mapped_column(Integer)
     section: Mapped[str | None] = mapped_column(Text)
+    # Staff scope (AUTH-3): the department that owns this timetable row.
+    department_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("departments.id", ondelete="SET NULL")
+    )
     day: Mapped[int] = mapped_column(SmallInteger)  # 1 = Monday ... 7 = Sunday
     start_time: Mapped[time] = mapped_column(Time)
     end_time: Mapped[time] = mapped_column(Time)

@@ -1,12 +1,16 @@
 "use client";
 
-import { CircleAlert, Headphones, SquarePen, WifiOff } from "lucide-react";
+import { CircleAlert, Headphones, SquarePen, UserRound, WifiOff } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { BrandMark } from "@/components/brand/BrandMark";
 import { Composer, type VoiceOptions } from "@/components/chat/Composer";
+import { DeadlinesCard } from "@/components/chat/DeadlinesCard";
+import { ProfileSheet } from "@/components/chat/ProfileSheet";
 import { BotMessage, UserBubble } from "@/components/chat/Messages";
 import { LiveOverlay } from "@/components/live/LiveOverlay";
+import { accountApi } from "@/lib/account";
+import { getAccessToken } from "@/lib/auth";
 import { fetchConfig, type PublicConfig } from "@/lib/chat/api";
 import type { Connection } from "@/lib/chat/state";
 import { type UseChatOptions, useChat } from "@/lib/chat/useChat";
@@ -87,7 +91,9 @@ export function ChatScreen({
   /** Overrides browser detection and APIs for live mode (tests). */
   liveOptions?: { enabled?: boolean; deps?: LiveDeps };
 }) {
-  const { state, send, retry, rate, newChat, dismissNotice } = useChat(chatOptions);
+  const { state, send, retry, rate, newChat, dismissNotice, setAuthToken } = useChat(chatOptions);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [program, setProgram] = useState<string | null>(null);
   const [config, setConfig] = useState<PublicConfig | null>(null);
   const [editRequest, setEditRequest] = useState<{ text: string; nonce: number } | null>(null);
   const [liveOpen, setLiveOpen] = useState(false);
@@ -99,6 +105,15 @@ export function ChatScreen({
   useEffect(() => {
     void fetchConfig(chatOptions?.apiUrl).then(setConfig);
   }, [chatOptions?.apiUrl]);
+
+  // A returning signed-in student: their program filters the deadlines card.
+  useEffect(() => {
+    void getAccessToken().then(async (token) => {
+      if (!token) return;
+      const me = await accountApi.me().catch(() => null);
+      if (me) setProgram(me.program);
+    });
+  }, []);
 
   const starters = useMemo(() => config?.starter_questions ?? [], [config]);
   const disclaimer = config?.disclaimer || institution.disclaimer;
@@ -144,6 +159,14 @@ export function ChatScreen({
         >
           <Headphones size={20} strokeWidth={1.75} aria-hidden="true" />
         </button>
+        <button
+          type="button"
+          onClick={() => setProfileOpen(true)}
+          aria-label="Your profile"
+          className="inline-flex size-11 items-center justify-center rounded-(--radius-pill) text-muted hover:bg-surface-2"
+        >
+          <UserRound size={20} strokeWidth={1.75} aria-hidden="true" />
+        </button>
         {messages.length > 0 && (
           <button
             type="button"
@@ -163,6 +186,21 @@ export function ChatScreen({
             Dismiss
           </button>
         </Banner>
+      )}
+      {profileOpen && (
+        <ProfileSheet
+          onClose={() => setProfileOpen(false)}
+          onSaved={(profile, token) => {
+            setProgram(profile.program);
+            setAuthToken(token);
+          }}
+          onDeleted={() => {
+            setProfileOpen(false);
+            setProgram(null);
+            setAuthToken(null);
+            newChat();
+          }}
+        />
       )}
       {liveOpen && (
         <LiveOverlay
@@ -193,6 +231,7 @@ export function ChatScreen({
             <BrandMark size={64} glow />
             <p className="text-lg">{institution.greeting}</p>
             <Chips items={starters} onPick={send} label="Starter questions" wrap />
+            <DeadlinesCard program={program} onAsk={send} />
           </div>
         ) : (
           <div className="flex flex-col gap-4" aria-live="polite" aria-relevant="additions">
